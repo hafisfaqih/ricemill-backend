@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rice Mill Management - Frontend Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #4CAF50, #45a049);
+            color: white;
+            padding: 30px;
+            text-align: center;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+        
+        .section {
+            background: white;
+            padding: 25px;
+            margin: 20px 0;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .section h2 {
+            color: #4CAF50;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #4CAF50;
+            padding-bottom: 10px;
+        }
+        
+        .button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+            transition: background-color 0.3s;
+        }
+        
+        .button:hover {
+            background-color: #45a049;
+        }
+        
+        .button.secondary {
+            background-color: #2196F3;
+        }
+        
+        .button.secondary:hover {
+            background-color: #1976D2;
+        }
+        
+        .button.danger {
+            background-color: #f44336;
+        }
+        
+        .button.danger:hover {
+            background-color: #d32f2f;
+        }
+        
+        .form-group {
+            margin: 15px 0;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        
+        .form-row {
+            display: flex;
+            gap: 15px;
+        }
+        
+        .form-row .form-group {
+            flex: 1;
+        }
+        
+        .result {
+            background-color: #f8f9fa;
+            border-left: 4px solid #4CAF50;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .result pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .loading.show {
+            display: block;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        
+        .stat-card {
+            background: linear-gradient(135deg, #2196F3, #1976D2);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        
+        .stat-card h3 {
+            font-size: 1.2em;
+            margin-bottom: 10px;
+        }
+        
+        .stat-card .number {
+            font-size: 2em;
+            font-weight: bold;
+        }
+        
+        .api-links {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+        
+        .api-links a {
+            padding: 10px 15px;
+            background-color: #FF9800;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            font-size: 14px;
+            transition: background-color 0.3s;
+        }
+        
+        .api-links a:hover {
+            background-color: #F57C00;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🌾 Rice Mill Management System</h1>
+            <p>Frontend Demo - API Integration Testing</p>
+        </div>
+
+        <!-- Quick Links -->
+        <div class="section">
+            <h2>🔗 Quick Links</h2>
+            <div class="api-links">
+                <a href="http://localhost:3001/api-docs" target="_blank">📋 Swagger Documentation</a>
+                <a href="http://localhost:3001/health" target="_blank">🔍 Health Check</a>
+                <a href="http://localhost:3001/" target="_blank">🏠 API Root</a>
+            </div>
+        </div>
+
+        <!-- Statistics Dashboard -->
+        <div class="section">
+            <h2>📊 System Statistics</h2>
+            <button class="button" onclick="loadStatistics()">Load Statistics</button>
+            <div class="loading" id="statsLoading">Loading statistics...</div>
+            <div class="stats-grid" id="statsGrid"></div>
+        </div>
+
+        <!-- Supplier Management -->
+        <div class="section">
+            <h2>🏪 Supplier Management</h2>
+            
+            <h3>Add New Supplier</h3>
+            <form id="supplierForm">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Supplier Name</label>
+                        <input type="text" id="supplierName" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Contact Person</label>
+                        <input type="text" id="contactPerson" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Phone</label>
+                        <input type="tel" id="phone" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Status</label>
+                        <select id="status">
+                            <option value="active">Active</option>
+                            <option value="inactive">Inactive</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Address</label>
+                    <textarea id="address" rows="3" required></textarea>
+                </div>
+                <button type="button" class="button" onclick="createSupplier()">Add Supplier</button>
+            </form>
+            
+            <h3 style="margin-top: 30px;">Supplier List</h3>
+            <button class="button secondary" onclick="loadSuppliers()">Load Suppliers</button>
+            <button class="button secondary" onclick="searchSuppliers()">Search Suppliers</button>
+            <div class="result" id="supplierResult"></div>
+        </div>
+
+        <!-- Purchase Management -->
+        <div class="section">
+            <h2>📦 Purchase Management</h2>
+            
+            <h3>Record New Purchase</h3>
+            <form id="purchaseForm">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Date</label>
+                        <input type="date" id="purchaseDate" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Supplier ID</label>
+                        <input type="number" id="supplierId" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Supplier Name</label>
+                        <input type="text" id="supplierNamePurchase" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Quantity (sacks)</label>
+                        <input type="number" id="quantity" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Weight (kg)</label>
+                        <input type="number" step="0.01" id="weight" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Price (IDR)</label>
+                        <input type="number" step="0.01" id="price" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Truck Cost (IDR)</label>
+                        <input type="number" step="0.01" id="truckCost" value="0">
+                    </div>
+                    <div class="form-group">
+                        <label>Labor Cost (IDR)</label>
+                        <input type="number" step="0.01" id="laborCost" value="0">
+                    </div>
+                </div>
+                <button type="button" class="button" onclick="createPurchase()">Record Purchase</button>
+            </form>
+            
+            <h3 style="margin-top: 30px;">Purchase Management</h3>
+            <button class="button secondary" onclick="loadPurchases()">Load Purchases</button>
+            <button class="button secondary" onclick="loadInventory()">Check Inventory</button>
+            <button class="button secondary" onclick="loadPurchaseTrends()">View Trends</button>
+            <div class="result" id="purchaseResult"></div>
+        </div>
+
+        <!-- Sales Management -->
+        <div class="section">
+            <h2>💰 Sales Management</h2>
+            
+            <h3>Record New Sale</h3>
+            <form id="saleForm">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Date</label>
+                        <input type="date" id="saleDate" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Purchase ID</label>
+                        <input type="number" id="purchaseId" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Quantity (sacks)</label>
+                        <input type="number" id="saleQuantity" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Weight (kg)</label>
+                        <input type="number" step="0.01" id="saleWeight" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Sale Price (IDR)</label>
+                        <input type="number" step="0.01" id="salePrice" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Pellet Cost (IDR)</label>
+                        <input type="number" step="0.01" id="pelletCost" value="0">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Fuel Cost (IDR)</label>
+                        <input type="number" step="0.01" id="fuelCost" value="0">
+                    </div>
+                    <div class="form-group">
+                        <label>Labor Cost (IDR)</label>
+                        <input type="number" step="0.01" id="saleLaborCost" value="0">
+                    </div>
+                </div>
+                <button type="button" class="button" onclick="createSale()">Record Sale</button>
+            </form>
+            
+            <h3 style="margin-top: 30px;">Sales Analysis</h3>
+            <button class="button secondary" onclick="loadSales()">Load Sales</button>
+            <button class="button secondary" onclick="loadProfitability()">Profitability Analysis</button>
+            <div class="result" id="saleResult"></div>
+        </div>
+
+        <!-- API Testing -->
+        <div class="section">
+            <h2>🧪 API Testing Tools</h2>
+            <button class="button" onclick="testAllAPIs()">Test All APIs</button>
+            <button class="button secondary" onclick="runHealthCheck()">Health Check</button>
+            <button class="button danger" onclick="clearResults()">Clear Results</button>
+            <div class="result" id="testResult"></div>
+        </div>
+    </div>
+
+    <script>
+        // Environment Configuration
+        const ENV_CONFIG = {
+            // Automatically detect environment
+            isDevelopment: window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1',
+            
+            // API Base URLs for different environments
+            development: {
+                baseUrl: 'http://localhost:3001',
+                apiUrl: 'http://localhost:3001/api'
+            },
+            production: {
+                // These will be updated during deployment
+                baseUrl: window.location.protocol + '//' + window.location.hostname,
+                apiUrl: window.location.protocol + '//' + window.location.hostname + '/api'
+            },
+            
+            // Get current environment config
+            getCurrent() {
+                return this.isDevelopment ? this.development : this.production;
+            },
+            
+            // Get base URL for current environment
+            getBaseUrl() {
+                return this.getCurrent().baseUrl;
+            },
+            
+            // Get API URL for current environment
+            getApiUrl() {
+                return this.getCurrent().apiUrl;
+            }
+        };
+        
+        // Use environment-aware API base URL
+        const API_BASE = ENV_CONFIG.getBaseUrl();
+        
+        console.log('🌍 Environment detected:', ENV_CONFIG.isDevelopment ? 'Development' : 'Production');
+        console.log('🔗 API Base URL:', API_BASE);
+        
+        // Update page title and info based on environment
+        if (!ENV_CONFIG.isDevelopment) {
+            document.title = 'Rice Mill Management - Production API Demo';
+            const envIndicator = document.createElement('div');
+            envIndicator.style.cssText = 'position:fixed;top:10px;right:10px;background:#f44336;color:white;padding:8px 12px;border-radius:4px;font-size:12px;z-index:1000;';
+            envIndicator.textContent = 'PRODUCTION';
+            document.body.appendChild(envIndicator);
+        }
+        
+        // Utility functions
+        function showLoading(elementId, show = true) {
+            const element = document.getElementById(elementId);
+            if (element) {
+                element.classList.toggle('show', show);
+            }
+        }
+        
+        function displayResult(elementId, data) {
+            const element = document.getElementById(elementId);
+            if (element) {
+                element.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+            }
+        }
+        
+        async function apiCall(endpoint, method = 'GET', data = null) {
+            try {
+                const options = {
+                    method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                };
+                
+                if (data) {
+                    options.body = JSON.stringify(data);
+                }
+                
+                const response = await fetch(`${API_BASE}${endpoint}`, options);
+                const result = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${result.error || 'Unknown error'}`);
+                }
+                
+                return result;
+            } catch (error) {
+                throw error;
+            }
+        }
+        
+        // Statistics
+        async function loadStatistics() {
+            showLoading('statsLoading', true);
+            const statsGrid = document.getElementById('statsGrid');
+            
+            try {
+                const [supplierStats, purchaseStats, salesStats, invoiceStats] = await Promise.all([
+                    apiCall('/api/suppliers/stats'),
+                    apiCall('/api/purchases/stats'),
+                    apiCall('/api/sales/stats'),
+                    apiCall('/api/invoices/stats')
+                ]);
+                
+                statsGrid.innerHTML = `
+                    <div class="stat-card">
+                        <h3>Total Suppliers</h3>
+                        <div class="number">${supplierStats.data.totalSuppliers || 0}</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Active Suppliers</h3>
+                        <div class="number">${supplierStats.data.activeSuppliers || 0}</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Total Purchases</h3>
+                        <div class="number">${purchaseStats.data.totalPurchases || 0}</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Total Sales</h3>
+                        <div class="number">${salesStats.data.totalSales || 0}</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Total Invoices</h3>
+                        <div class="number">${invoiceStats.data.totalInvoices || 0}</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Net Profit</h3>
+                        <div class="number">Rp ${(salesStats.data.totalNetProfit || 0).toLocaleString()}</div>
+                    </div>
+                `;
+            } catch (error) {
+                statsGrid.innerHTML = `<div class="stat-card"><h3>Error</h3><div>Failed to load statistics</div></div>`;
+                console.error('Error loading statistics:', error);
+            }
+            
+            showLoading('statsLoading', false);
+        }
+        
+        // Supplier functions
+        async function createSupplier() {
+            const supplierData = {
+                name: document.getElementById('supplierName').value,
+                contact_person: document.getElementById('contactPerson').value,
+                phone: document.getElementById('phone').value,
+                address: document.getElementById('address').value,
+                status: document.getElementById('status').value
+            };
+            
+            try {
+                const result = await apiCall('/api/suppliers', 'POST', supplierData);
+                displayResult('supplierResult', result);
+                document.getElementById('supplierForm').reset();
+                alert('Supplier created successfully!');
+            } catch (error) {
+                displayResult('supplierResult', { error: error.message });
+            }
+        }
+        
+        async function loadSuppliers() {
+            try {
+                const result = await apiCall('/api/suppliers');
+                displayResult('supplierResult', result);
+            } catch (error) {
+                displayResult('supplierResult', { error: error.message });
+            }
+        }
+        
+        async function searchSuppliers() {
+            const query = prompt('Enter search term:');
+            if (query) {
+                try {
+                    const result = await apiCall(`/api/suppliers/search?q=${encodeURIComponent(query)}`);
+                    displayResult('supplierResult', result);
+                } catch (error) {
+                    displayResult('supplierResult', { error: error.message });
+                }
+            }
+        }
+        
+        // Purchase functions
+        async function createPurchase() {
+            const purchaseData = {
+                date: document.getElementById('purchaseDate').value,
+                supplier_id: parseInt(document.getElementById('supplierId').value),
+                supplier: document.getElementById('supplierNamePurchase').value,
+                quantity: parseInt(document.getElementById('quantity').value),
+                weight: parseFloat(document.getElementById('weight').value),
+                price: parseFloat(document.getElementById('price').value),
+                truck_cost: parseFloat(document.getElementById('truckCost').value) || 0,
+                labor_cost: parseFloat(document.getElementById('laborCost').value) || 0
+            };
+            
+            try {
+                const result = await apiCall('/api/purchases', 'POST', purchaseData);
+                displayResult('purchaseResult', result);
+                document.getElementById('purchaseForm').reset();
+                alert('Purchase recorded successfully!');
+            } catch (error) {
+                displayResult('purchaseResult', { error: error.message });
+            }
+        }
+        
+        async function loadPurchases() {
+            try {
+                const result = await apiCall('/api/purchases');
+                displayResult('purchaseResult', result);
+            } catch (error) {
+                displayResult('purchaseResult', { error: error.message });
+            }
+        }
+        
+        async function loadInventory() {
+            try {
+                const result = await apiCall('/api/purchases/inventory');
+                displayResult('purchaseResult', result);
+            } catch (error) {
+                displayResult('purchaseResult', { error: error.message });
+            }
+        }
+        
+        async function loadPurchaseTrends() {
+            try {
+                const result = await apiCall('/api/purchases/trends');
+                displayResult('purchaseResult', result);
+            } catch (error) {
+                displayResult('purchaseResult', { error: error.message });
+            }
+        }
+        
+        // Sale functions
+        async function createSale() {
+            const saleData = {
+                date: document.getElementById('saleDate').value,
+                purchase_id: parseInt(document.getElementById('purchaseId').value),
+                quantity: parseInt(document.getElementById('saleQuantity').value),
+                weight: parseFloat(document.getElementById('saleWeight').value),
+                price: parseFloat(document.getElementById('salePrice').value),
+                pellet: parseFloat(document.getElementById('pelletCost').value) || 0,
+                fuel: parseFloat(document.getElementById('fuelCost').value) || 0,
+                labor: parseFloat(document.getElementById('saleLaborCost').value) || 0
+            };
+            
+            try {
+                const result = await apiCall('/api/sales', 'POST', saleData);
+                displayResult('saleResult', result);
+                document.getElementById('saleForm').reset();
+                alert('Sale recorded successfully!');
+            } catch (error) {
+                displayResult('saleResult', { error: error.message });
+            }
+        }
+        
+        async function loadSales() {
+            try {
+                const result = await apiCall('/api/sales');
+                displayResult('saleResult', result);
+            } catch (error) {
+                displayResult('saleResult', { error: error.message });
+            }
+        }
+        
+        async function loadProfitability() {
+            try {
+                const result = await apiCall('/api/sales/profitability');
+                displayResult('saleResult', result);
+            } catch (error) {
+                displayResult('saleResult', { error: error.message });
+            }
+        }
+        
+        // Testing functions
+        async function runHealthCheck() {
+            try {
+                const result = await apiCall('/health');
+                displayResult('testResult', result);
+            } catch (error) {
+                displayResult('testResult', { error: error.message });
+            }
+        }
+        
+        async function testAllAPIs() {
+            const testResult = document.getElementById('testResult');
+            testResult.innerHTML = '<div>Running comprehensive API tests...</div>';
+            
+            const tests = [
+                { name: 'Health Check', endpoint: '/health' },
+                { name: 'Suppliers', endpoint: '/api/suppliers' },
+                { name: 'Supplier Stats', endpoint: '/api/suppliers/stats' },
+                { name: 'Purchases', endpoint: '/api/purchases' },
+                { name: 'Purchase Stats', endpoint: '/api/purchases/stats' },
+                { name: 'Sales', endpoint: '/api/sales' },
+                { name: 'Sales Stats', endpoint: '/api/sales/stats' },
+                { name: 'Invoices', endpoint: '/api/invoices' },
+                { name: 'Invoice Stats', endpoint: '/api/invoices/stats' }
+            ];
+            
+            const results = [];
+            
+            for (const test of tests) {
+                try {
+                    const result = await apiCall(test.endpoint);
+                    results.push({ test: test.name, status: 'SUCCESS', data: result });
+                } catch (error) {
+                    results.push({ test: test.name, status: 'ERROR', error: error.message });
+                }
+            }
+            
+            displayResult('testResult', { 
+                summary: `${results.filter(r => r.status === 'SUCCESS').length}/${results.length} tests passed`,
+                results 
+            });
+        }
+        
+        function clearResults() {
+            const resultElements = document.querySelectorAll('.result');
+            resultElements.forEach(element => {
+                element.innerHTML = '';
+            });
+            
+            const statsGrid = document.getElementById('statsGrid');
+            if (statsGrid) {
+                statsGrid.innerHTML = '';
+            }
+        }
+        
+        // Initialize with current date
+        document.addEventListener('DOMContentLoaded', function() {
+            const today = new Date().toISOString().split('T')[0];
+            const dateInputs = document.querySelectorAll('input[type="date"]');
+            dateInputs.forEach(input => {
+                input.value = today;
+            });
+        });
+    </script>
+</body>
+</html>
