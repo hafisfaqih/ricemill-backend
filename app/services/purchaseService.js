@@ -325,7 +325,7 @@ class PurchaseService {
           [Purchase.sequelize.fn('SUM', Purchase.sequelize.col('quantity')), 'totalQuantity'],
           [Purchase.sequelize.fn('SUM', Purchase.sequelize.col('weight')), 'totalWeight'],
           [Purchase.sequelize.fn('SUM', Purchase.sequelize.col('total_cost')), 'totalCost'],
-          [Purchase.sequelize.fn('AVG', Purchase.sequelize.col('price_per_kg')), 'avgPricePerKg'],
+          [Purchase.sequelize.fn('AVG', Purchase.sequelize.literal('price / weight')), 'avgPricePerKg'],
         ],
         raw: true,
       });
