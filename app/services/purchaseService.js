@@ -411,7 +411,7 @@ class PurchaseService {
           'rice_type',
           'quality',
           'weight',
-          'price_per_kg',
+          'price',
           'purchase_date',
           'batch_number',
         ],

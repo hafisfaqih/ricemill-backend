@@ -374,7 +374,7 @@ class SaleService {
           [Sale.sequelize.fn('SUM', Sale.sequelize.col('weight')), 'totalWeight'],
           [Sale.sequelize.fn('SUM', Sale.sequelize.col('revenue')), 'totalRevenue'],
           [Sale.sequelize.fn('SUM', Sale.sequelize.col('net_profit')), 'totalProfit'],
-          [Sale.sequelize.fn('AVG', Sale.sequelize.col('price_per_kg')), 'avgPricePerKg'],
+          [Sale.sequelize.fn('AVG', Sale.sequelize.literal('price / weight')), 'avgPricePerKg'],
           [Sale.sequelize.fn('AVG', Sale.sequelize.col('rendement')), 'avgRendement'],
         ],
         raw: true,
