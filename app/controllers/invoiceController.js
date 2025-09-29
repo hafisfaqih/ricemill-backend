@@ -270,9 +270,10 @@ class InvoiceController {
       }
 
       if (error.message.includes('paid invoice')) {
-        return res.status(400).json({
+        return res.status(403).json({
           success: false,
-          message: error.message,
+          message: 'Invoice has already been paid; items cannot be deleted',
+          errorCode: 'INVOICE_ALREADY_PAID',
         });
       }
 

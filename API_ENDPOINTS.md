@@ -3,120 +3,122 @@
 
 BASE URL: http://localhost:3001
 
+✅ = Sudah dites di staging · ❌ = Belum dites · Tambahkan catatan tanggal/metode bila tersedia
+
 ## 🏥 SYSTEM ENDPOINTS
-- GET / - Welcome message & API documentation
-- GET /health - Health check status
+- ❌ GET / - Welcome message & API documentation
+- ❌ GET /health - Health check status
 
 ## 🔐 AUTHENTICATION ENDPOINTS (Public)
 ### Auth Routes (/api/auth)
-- POST /api/auth/register - Register new user
-- POST /api/auth/login - User login
-- POST /api/auth/logout - User logout
+- ❌ POST /api/auth/register - Register new user
+- ❌ POST /api/auth/login - User login
+- ❌ POST /api/auth/logout - User logout
 
 ## 👥 USER MANAGEMENT ENDPOINTS
 ### User Routes (/api/users)
 #### Public Routes:
-- POST /api/users/register - Register new user
-- POST /api/users/login - User login
+- ❌ POST /api/users/register - Register new user
+- ❌ POST /api/users/login - User login
 
 #### Protected Routes (Require Authentication):
-- GET /api/users/profile - Get user profile
-- PUT /api/users/profile - Update user profile  
-- POST /api/users/logout - User logout
+- ❌ GET /api/users/profile - Get user profile
+- ❌ PUT /api/users/profile - Update user profile  
+- ❌ POST /api/users/logout - User logout
 
 #### Admin Only Routes:
-- GET /api/users - Get all users
-- GET /api/users/search - Search users
-- GET /api/users/stats - Get user statistics
-- GET /api/users/:id - Get user by ID
-- DELETE /api/users/:id - Delete user
-- PATCH /api/users/:id/role - Change user role
+- ❌ GET /api/users - Get all users
+- ❌ GET /api/users/search - Search users
+- ❌ GET /api/users/stats - Get user statistics
+- ❌ GET /api/users/:id - Get user by ID
+- ❌ DELETE /api/users/:id - Delete user
+- ❌ PATCH /api/users/:id/role - Change user role
 
 ## 🏪 SUPPLIER MANAGEMENT ENDPOINTS (Public Access)
 ### Supplier Routes (/api/suppliers)
-- GET /api/suppliers - Get all suppliers (with pagination & filtering)
+- ✅ GET /api/suppliers - Get all suppliers (with pagination & filtering)
   * Query params: page, limit, search, status
-- POST /api/suppliers - Create new supplier
-- GET /api/suppliers/stats - Get supplier statistics
-- GET /api/suppliers/active - Get all active suppliers
-- GET /api/suppliers/search - Search suppliers by name
+- ✅ POST /api/suppliers - Create new supplier
+- ✅ GET /api/suppliers/stats - Get supplier statistics
+- ✅ GET /api/suppliers/active - Get all active suppliers
+- ✅ GET /api/suppliers/search - Search suppliers by name
   * Query param: q (search term)
-- GET /api/suppliers/:id - Get supplier by ID
-- PUT /api/suppliers/:id - Update supplier
-- DELETE /api/suppliers/:id - Delete supplier
+- ✅ GET /api/suppliers/:id - Get supplier by ID
+- ✅ PUT /api/suppliers/:id - Update supplier
+- ✅ DELETE /api/suppliers/:id - Delete supplier
 
 ## 📦 PURCHASE MANAGEMENT ENDPOINTS (Authentication Required)
 ### Purchase Routes (/api/purchases)
 #### General Access (All Authenticated Users):
-- GET /api/purchases - Get all purchases (with pagination & filtering)
-- GET /api/purchases/search - Search purchases
-- GET /api/purchases/stats - Get purchase statistics
-- GET /api/purchases/inventory - Get available inventory
-- GET /api/purchases/trends - Get monthly trends
-- GET /api/purchases/supplier/:supplierId - Get purchases by supplier
-- GET /api/purchases/:id - Get purchase by ID
+- ✅ GET /api/purchases - Get all purchases (with pagination & filtering)
+- ✅ GET /api/purchases/search - Search purchases
+- ✅ GET /api/purchases/stats - Get purchase statistics _(manual retest 2025-09-29)_
+- ✅ GET /api/purchases/inventory - Get available inventory
+- ✅ GET /api/purchases/trends - Get monthly trends _(manual retest 2025-09-29)_
+- ✅ GET /api/purchases/supplier/:supplierId - Get purchases by supplier
+- ✅ GET /api/purchases/:id - Get purchase by ID
 
 #### Admin & Manager Only:
-- POST /api/purchases - Create new purchase
-- PUT /api/purchases/:id - Update purchase
+- ✅ POST /api/purchases - Create new purchase
+- ✅ PUT /api/purchases/:id - Update purchase
 
 #### Admin Only:
-- DELETE /api/purchases/:id - Delete purchase
+- ✅ DELETE /api/purchases/:id - Delete purchase
 
 ## 💰 SALES MANAGEMENT ENDPOINTS (Authentication Required)
 ### Sale Routes (/api/sales)
 #### General Access (All Authenticated Users):
-- GET /api/sales - Get all sales (with pagination & filtering)
-- GET /api/sales/search - Search sales
-- GET /api/sales/stats - Get sale statistics
-- GET /api/sales/profitability - Get profitability analysis
-- GET /api/sales/inventory-turnover - Get inventory turnover analysis
-- GET /api/sales/purchase/:purchaseId - Get sales by purchase
-- GET /api/sales/:id - Get sale by ID
+- ✅ GET /api/sales - Get all sales (with pagination & filtering)
+- ✅ GET /api/sales/search - Search sales
+- ✅ GET /api/sales/stats - Get sale statistics
+- ✅ GET /api/sales/profitability - Get profitability analysis
+- ✅ GET /api/sales/inventory-turnover - Get inventory turnover analysis
+- ✅ GET /api/sales/purchase/:purchaseId - Get sales by purchase
+- ✅ GET /api/sales/:id - Get sale by ID
 
 #### Admin & Manager Only:
-- POST /api/sales - Create new sale
-- PUT /api/sales/:id - Update sale
+- ✅ POST /api/sales - Create new sale
+- ✅ PUT /api/sales/:id - Update sale
 
 #### Admin Only:
-- DELETE /api/sales/:id - Delete sale
+- ✅ DELETE /api/sales/:id - Delete sale
 
 ## 🧾 INVOICE MANAGEMENT ENDPOINTS (Authentication Required)
 ### Invoice Routes (/api/invoices)
 #### General Access (All Authenticated Users):
-- GET /api/invoices - Get all invoices (with pagination & filtering)
-- GET /api/invoices/search - Search invoices
-- GET /api/invoices/stats - Get invoice statistics
-- GET /api/invoices/trends - Get monthly trends
-- GET /api/invoices/overdue - Get overdue invoices
-- GET /api/invoices/aging-report - Get aging report
-- GET /api/invoices/generate-number - Generate invoice number
-- GET /api/invoices/:id - Get invoice by ID
+- ✅ GET /api/invoices - Get all invoices (with pagination & filtering)
+- ✅ GET /api/invoices/search - Search invoices
+- ✅ GET /api/invoices/stats - Get invoice statistics
+- ✅ GET /api/invoices/trends - Get monthly trends
+- ✅ GET /api/invoices/overdue - Get overdue invoices
+- ✅ GET /api/invoices/aging-report - Get aging report
+- ✅ GET /api/invoices/generate-number - Generate invoice number
+- ✅ GET /api/invoices/:id - Get invoice by ID
 
 #### Admin & Manager Only:
-- POST /api/invoices - Create new invoice
-- PUT /api/invoices/:id - Update invoice
-- PATCH /api/invoices/:id/paid - Mark invoice as paid
-- POST /api/invoices/:id/items - Add invoice item
-- PUT /api/invoices/items/:itemId - Update invoice item
+- ✅ POST /api/invoices - Create new invoice _(berhasil bila menyertakan invoiceNumber & amount; tanpa keduanya sempat 500)_
+- ✅ PUT /api/invoices/:id - Update invoice
+- ✅ PATCH /api/invoices/:id/paid - Mark invoice as paid
+- ✅ POST /api/invoices/:id/items - Add invoice item
+- ✅ PUT /api/invoices/items/:itemId - Update invoice item
 
 #### Admin Only:
-- DELETE /api/invoices/:id - Delete invoice
-- DELETE /api/invoices/items/:itemId - Delete invoice item
+- ✅ DELETE /api/invoices/:id - Delete invoice
+- ❌ DELETE /api/invoices/items/:itemId - Delete invoice item _(500: "Failed to delete invoice item")_
 
 ## 📊 BUSINESS ANALYTICS & REPORTS
 ### Available Analytics Endpoints:
-- GET /api/suppliers/stats - Supplier statistics
-- GET /api/purchases/stats - Purchase statistics & trends
-- GET /api/purchases/inventory - Current inventory status
-- GET /api/purchases/trends - Purchase monthly trends
-- GET /api/sales/stats - Sales statistics
-- GET /api/sales/profitability - Profitability analysis
-- GET /api/sales/inventory-turnover - Inventory turnover rates
-- GET /api/invoices/stats - Invoice statistics
-- GET /api/invoices/trends - Invoice monthly trends
-- GET /api/invoices/aging-report - Payment aging analysis
-- GET /api/users/stats - User management statistics
+- ✅ GET /api/suppliers/stats - Supplier statistics
+- ✅ GET /api/purchases/stats - Purchase statistics & trends _(manual retest 2025-09-29)_
+- ✅ GET /api/purchases/inventory - Current inventory status
+- ✅ GET /api/purchases/trends - Purchase monthly trends _(manual retest 2025-09-29)_
+- ✅ GET /api/sales/stats - Sales statistics
+- ✅ GET /api/sales/profitability - Profitability analysis
+- ✅ GET /api/sales/inventory-turnover - Inventory turnover rates
+- ✅ GET /api/invoices/stats - Invoice statistics
+- ✅ GET /api/invoices/trends - Invoice monthly trends
+- ✅ GET /api/invoices/aging-report - Payment aging analysis
+- ❌ GET /api/users/stats - User management statistics _(belum dites)_
 
 ## 🔒 AUTHENTICATION & AUTHORIZATION
 ### Authentication Methods:
