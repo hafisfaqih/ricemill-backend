@@ -290,52 +290,71 @@ class PurchaseService {
       // Filter by supplier
       if (supplierId) whereClause.supplierId = supplierId;
 
-      const stats = await Purchase.findAll({
+      const purchases = await Purchase.findAll({
         where: whereClause,
-        attributes: [
-          [Purchase.sequelize.fn('COUNT', Purchase.sequelize.col('id')), 'totalPurchases'],
-          [Purchase.sequelize.fn('SUM', Purchase.sequelize.col('quantity')), 'totalQuantity'],
-          // Derived total weight = SUM(quantity * weight)
-          [Purchase.sequelize.fn('SUM', Purchase.sequelize.literal('quantity * weight')), 'totalWeight'],
-          [Purchase.sequelize.fn('SUM', Purchase.sequelize.col('total_cost')), 'totalCost'],
-          // Average unit price (price)
-          [Purchase.sequelize.fn('AVG', Purchase.sequelize.col('price')), 'avgUnitPrice'],
-        ],
-        raw: true,
-      });
-
-      const supplierStats = await Purchase.findAll({
-        where: whereClause,
-        attributes: [
-          'supplierId',
-          [Purchase.sequelize.fn('COUNT', Purchase.sequelize.col('Purchase.id')), 'purchaseCount'],
-          [Purchase.sequelize.fn('SUM', Purchase.sequelize.col('total_cost')), 'totalAmount'],
-        ],
         include: [
           {
             model: Supplier,
             as: 'supplierData',
-            attributes: ['name'],
+            attributes: ['id', 'name'],
           },
         ],
-        group: ['supplierId', 'supplier.id', 'supplier.name'],
-        order: [[Purchase.sequelize.fn('SUM', Purchase.sequelize.col('total_cost')), 'DESC']],
-        limit: 10,
       });
+
+      let totalPurchases = 0;
+      let totalQuantity = 0;
+      let totalWeight = 0;
+      let totalCost = 0;
+      let totalPrice = 0;
+
+      const supplierAgg = new Map();
+
+      purchases.forEach(purchase => {
+        totalPurchases += 1;
+
+        const quantity = Number(purchase.quantity) || 0;
+        const weight = Number(purchase.weight) || 0;
+        const price = Number(purchase.price) || 0;
+        const cost = Number(purchase.totalCost) || quantity * weight * price;
+
+        totalQuantity += quantity;
+        totalWeight += quantity * weight;
+        totalCost += cost;
+        totalPrice += price;
+
+        if (purchase.supplierId) {
+          const existing = supplierAgg.get(purchase.supplierId) || {
+            supplierId: purchase.supplierId,
+            supplierName: purchase.supplierData?.name || null,
+            purchaseCount: 0,
+            totalAmount: 0,
+          };
+
+          existing.purchaseCount += 1;
+          existing.totalAmount += cost;
+          supplierAgg.set(purchase.supplierId, existing);
+        }
+      });
+
+      const supplierStats = Array.from(supplierAgg.values())
+        .sort((a, b) => b.totalAmount - a.totalAmount)
+        .slice(0, 10);
+
+      const avgUnitPrice = totalPurchases > 0 ? totalPrice / totalPurchases : 0;
 
       return {
         summary: {
-          totalPurchases: parseInt(stats[0].totalPurchases) || 0,
-          totalQuantity: parseInt(stats[0].totalQuantity) || 0,
-            totalWeight: parseFloat(stats[0].totalWeight) || 0,
-          totalCost: parseFloat(stats[0].totalCost) || 0,
-          avgUnitPrice: parseFloat(stats[0].avgUnitPrice) || 0,
+          totalPurchases,
+          totalQuantity,
+          totalWeight,
+          totalCost,
+          avgUnitPrice,
         },
         topSuppliers: supplierStats.map(item => ({
           supplierId: item.supplierId,
-          supplierName: item.supplier?.name,
-          purchaseCount: parseInt(item.purchaseCount),
-          totalAmount: parseFloat(item.totalAmount),
+          supplierName: item.supplierName,
+          purchaseCount: item.purchaseCount,
+          totalAmount: item.totalAmount,
         })),
       };
     } catch (error) {
@@ -409,37 +428,39 @@ class PurchaseService {
    */
   static async getMonthlyTrends(year = new Date().getFullYear()) {
     try {
-      const monthlyData = await Purchase.findAll({
+      const purchases = await Purchase.findAll({
         where: {
-          purchase_date: {
-            [Op.between]: [`${year}-01-01`, `${year}-12-31`],
+          date: {
+            [Op.between]: [new Date(`${year}-01-01`), new Date(`${year}-12-31`)],
           },
         },
-        attributes: [
-          [Purchase.sequelize.fn('EXTRACT', Purchase.sequelize.literal('MONTH FROM purchase_date')), 'month'],
-          [Purchase.sequelize.fn('COUNT', Purchase.sequelize.col('id')), 'purchaseCount'],
-          [Purchase.sequelize.fn('SUM', Purchase.sequelize.col('weight')), 'totalWeight'],
-          [Purchase.sequelize.fn('SUM', Purchase.sequelize.col('total_cost')), 'totalCost'],
-        ],
-        group: [Purchase.sequelize.fn('EXTRACT', Purchase.sequelize.literal('MONTH FROM purchase_date'))],
-        order: [Purchase.sequelize.fn('EXTRACT', Purchase.sequelize.literal('MONTH FROM purchase_date'))],
-        raw: true,
+        attributes: ['id', 'date', 'quantity', 'weight', 'totalCost'],
       });
 
-      // Fill in missing months with zero values
-      const trends = [];
-      for (let month = 1; month <= 12; month++) {
-        const monthData = monthlyData.find(item => parseInt(item.month) === month);
-        trends.push({
-          month,
-          monthName: new Date(year, month - 1).toLocaleString('default', { month: 'long' }),
-          purchaseCount: monthData ? parseInt(monthData.purchaseCount) : 0,
-          totalWeight: monthData ? parseFloat(monthData.totalWeight) : 0,
-          totalCost: monthData ? parseFloat(monthData.totalCost) : 0,
-        });
-      }
+      const monthlyTotals = Array.from({ length: 12 }, (_, index) => ({
+        month: index + 1,
+        monthName: new Date(year, index).toLocaleString('default', { month: 'long' }),
+        purchaseCount: 0,
+        totalWeight: 0,
+        totalCost: 0,
+      }));
 
-      return trends;
+      purchases.forEach(purchase => {
+        const purchaseDate = purchase.date ? new Date(purchase.date) : null;
+        if (!purchaseDate || Number.isNaN(purchaseDate.getMonth())) return;
+
+        const monthIndex = purchaseDate.getMonth();
+        const quantity = Number(purchase.quantity) || 0;
+        const weight = Number(purchase.weight) || 0;
+        const totalCost = Number(purchase.totalCost) || 0;
+
+        const monthBucket = monthlyTotals[monthIndex];
+        monthBucket.purchaseCount += 1;
+        monthBucket.totalWeight += quantity * weight;
+        monthBucket.totalCost += totalCost;
+      });
+
+      return monthlyTotals;
     } catch (error) {
       console.error('Error getting monthly trends:', error);
       throw error;

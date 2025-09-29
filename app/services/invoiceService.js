@@ -266,7 +266,9 @@ class InvoiceService {
         attributes: [[InvoiceItem.sequelize.fn('SUM', InvoiceItem.sequelize.col('total')), 'total']],
         raw: true,
       });
-      const total = parseFloat(sumRows[0].total) || 0;
+      const total = sumRows.length > 0 && sumRows[0].total !== null
+        ? parseFloat(sumRows[0].total)
+        : 0;
       const invoice = await Invoice.findByPk(invoiceId);
       if (invoice) await invoice.update({ amount: total });
     } catch (err) {
