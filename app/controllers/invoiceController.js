@@ -8,14 +8,22 @@ class InvoiceController {
    */
   static async createInvoice(req, res) {
     try {
+      // Backward compatibility mapping snake_case -> camelCase
+      const body = { ...req.body };
+      if (body.invoice_number && !body.invoiceNumber) body.invoiceNumber = body.invoice_number;
+      if (body.invoice_date && !body.date) body.date = body.invoice_date;
+      if (body.due_date && !body.dueDate) body.dueDate = body.due_date;
+      if (body.customer_name && !body.customer) body.customer = body.customer_name;
+      if (body.total_amount && !body.amount) body.amount = body.total_amount;
+
       // Generate invoice number if not provided
-      if (!req.body.invoice_number) {
-        req.body.invoice_number = await InvoiceService.generateInvoiceNumber(
-          req.body.invoice_date ? new Date(req.body.invoice_date) : new Date()
+      if (!body.invoiceNumber) {
+        body.invoiceNumber = await InvoiceService.generateInvoiceNumber(
+          body.date ? new Date(body.date) : new Date()
         );
       }
 
-      const invoice = await InvoiceService.createInvoice(req.body);
+      const invoice = await InvoiceService.createInvoice(body);
       
       res.status(201).json({
         success: true,
@@ -59,7 +67,16 @@ class InvoiceController {
    */
   static async getAllInvoices(req, res) {
     try {
-      const result = await InvoiceService.getAllInvoices(req.query);
+  // Normalize query params
+  const q = { ...req.query };
+  if (q.customer_name && !q.customer) q.customer = q.customer_name;
+  if (q.invoice_number && !q.invoiceNumber) q.invoiceNumber = q.invoice_number; // service uses invoiceNumber only for number generation; filtering by number could be added later
+  if (q.start_date && !q.startDate) q.startDate = q.start_date;
+  if (q.end_date && !q.endDate) q.endDate = q.end_date;
+  if (q.min_amount && !q.minAmount) q.minAmount = q.min_amount;
+  if (q.max_amount && !q.maxAmount) q.maxAmount = q.max_amount;
+  if (q.due_date && !q.dueDate) q.dueDate = q.due_date;
+  const result = await InvoiceService.getAllInvoices(q);
       
       res.status(200).json({
         success: true,
@@ -115,7 +132,13 @@ class InvoiceController {
    */
   static async updateInvoice(req, res) {
     try {
-      const invoice = await InvoiceService.updateInvoice(req.params.id, req.body);
+  const body = { ...req.body };
+  if (body.invoice_number && !body.invoiceNumber) body.invoiceNumber = body.invoice_number;
+  if (body.invoice_date && !body.date) body.date = body.invoice_date;
+  if (body.due_date && !body.dueDate) body.dueDate = body.due_date;
+  if (body.customer_name && !body.customer) body.customer = body.customer_name;
+  if (body.total_amount && !body.amount) body.amount = body.total_amount;
+  const invoice = await InvoiceService.updateInvoice(req.params.id, body);
       
       res.status(200).json({
         success: true,
@@ -189,7 +212,7 @@ class InvoiceController {
    */
   static async markAsPaid(req, res) {
     try {
-      const invoice = await InvoiceService.markAsPaid(req.params.id, req.body);
+  const invoice = await InvoiceService.markAsPaid(req.params.id);
       
       res.status(200).json({
         success: true,
@@ -227,7 +250,9 @@ class InvoiceController {
    */
   static async addInvoiceItem(req, res) {
     try {
-      const item = await InvoiceService.addInvoiceItem(req.params.id, req.body);
+  const body = { ...req.body };
+  // item fields are already camelCase (name, quantity, price)
+  const item = await InvoiceService.addInvoiceItem(req.params.id, body);
       
       res.status(201).json({
         success: true,
@@ -278,7 +303,8 @@ class InvoiceController {
    */
   static async updateInvoiceItem(req, res) {
     try {
-      const item = await InvoiceService.updateInvoiceItem(req.params.itemId, req.body);
+  const body = { ...req.body };
+  const item = await InvoiceService.updateInvoiceItem(req.params.itemId, body);
       
       res.status(200).json({
         success: true,
@@ -399,7 +425,7 @@ class InvoiceController {
    */
   static async getOverdueInvoices(req, res) {
     try {
-      const overdueInvoices = await InvoiceService.getOverdueInvoices(req.query);
+  const overdueInvoices = await InvoiceService.getOverdueInvoices(req.query);
       
       res.status(200).json({
         success: true,
@@ -423,7 +449,10 @@ class InvoiceController {
    */
   static async getInvoiceStats(req, res) {
     try {
-      const stats = await InvoiceService.getInvoiceStats(req.query);
+  const q = { ...req.query };
+  if (q.start_date && !q.startDate) q.startDate = q.start_date;
+  if (q.end_date && !q.endDate) q.endDate = q.end_date;
+  const stats = await InvoiceService.getInvoiceStats(q);
       
       res.status(200).json({
         success: true,
@@ -504,7 +533,7 @@ class InvoiceController {
       res.status(200).json({
         success: true,
         message: 'Invoice number generated successfully',
-        data: { invoice_number: invoiceNumber },
+        data: { invoiceNumber },
       });
     } catch (error) {
       console.error('Error generating invoice number:', error);

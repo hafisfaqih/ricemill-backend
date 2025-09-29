@@ -2,13 +2,15 @@ const Joi = require('joi');
 
 // Validation schema for creating a new sale
 const validateSaleCreate = (data) => {
+  // Backward compatibility mapping
+  if (data && data.purchase_id && !data.purchaseId) data.purchaseId = data.purchase_id;
   const schema = Joi.object({
     date: Joi.date().iso().required().messages({
       'date.base': 'Date must be a valid date',
       'date.format': 'Date must be in ISO format',
       'any.required': 'Date is required'
     }),
-    purchase_id: Joi.number().integer().positive().allow(null).messages({
+    purchaseId: Joi.number().integer().positive().allow(null).messages({
       'number.base': 'Purchase ID must be a number',
       'number.integer': 'Purchase ID must be an integer',
       'number.positive': 'Purchase ID must be positive'
@@ -48,12 +50,13 @@ const validateSaleCreate = (data) => {
 
 // Validation schema for updating a sale
 const validateSaleUpdate = (data) => {
+  if (data && data.purchase_id && !data.purchaseId) data.purchaseId = data.purchase_id;
   const schema = Joi.object({
     date: Joi.date().iso().messages({
       'date.base': 'Date must be a valid date',
       'date.format': 'Date must be in ISO format'
     }),
-    purchase_id: Joi.number().integer().positive().allow(null).messages({
+    purchaseId: Joi.number().integer().positive().allow(null).messages({
       'number.base': 'Purchase ID must be a number',
       'number.integer': 'Purchase ID must be an integer',
       'number.positive': 'Purchase ID must be positive'
@@ -90,6 +93,7 @@ const validateSaleUpdate = (data) => {
 
 // Validation schema for sale search/filter parameters
 const validateSaleSearch = (data) => {
+  if (data && data.purchase_id && !data.purchaseId) data.purchaseId = data.purchase_id;
   const schema = Joi.object({
     // Date range filters
     startDate: Joi.date().iso().messages({
@@ -140,7 +144,7 @@ const validateSaleSearch = (data) => {
     }),
     
     // Purchase ID filter
-    purchase_id: Joi.number().integer().positive().messages({
+    purchaseId: Joi.number().integer().positive().messages({
       'number.base': 'Purchase ID must be a number',
       'number.integer': 'Purchase ID must be an integer',
       'number.positive': 'Purchase ID must be positive'
@@ -160,8 +164,8 @@ const validateSaleSearch = (data) => {
     }),
     
     // Sorting
-    sortBy: Joi.string().valid('date', 'quantity', 'weight', 'price', 'net_profit', 'created_at').default('date').messages({
-      'any.only': 'Sort by must be one of: date, quantity, weight, price, net_profit, created_at'
+    sortBy: Joi.string().valid('date', 'quantity', 'weight', 'price', 'netProfit', 'created_at').default('date').messages({
+      'any.only': 'Sort by must be one of: date, quantity, weight, price, netProfit, created_at'
     }),
     sortOrder: Joi.string().valid('ASC', 'DESC', 'asc', 'desc').default('DESC').messages({
       'any.only': 'Sort order must be ASC or DESC'

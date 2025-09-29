@@ -16,6 +16,9 @@ const options = {
         url: 'https://opensource.org/licenses/MIT'
       }
     },
+    'x-legacy-field-compatibility': {
+      description: 'This API prefers camelCase in request/response bodies. For backward compatibility, snake_case field names are also accepted on input (e.g., supplier_id, truck_cost). Responses may include snake_case for persisted legacy columns; future versions will standardize outputs to camelCase. When both are provided in a request body, camelCase takes precedence.'
+    },
     servers: [
       {
         url: 'http://localhost:3001',
@@ -682,4 +685,155 @@ const options = {
 };
 
 const specs = swaggerJSDoc(options);
+// Programmatically extend paths not yet documented via JSDoc blocks (analytics & invoice item operations)
+specs.paths = specs.paths || {};
+
+// Helper to safely add/merge a path
+function addPath(path, methods) {
+  specs.paths[path] = {
+    ...(specs.paths[path] || {}),
+    ...methods
+  };
+}
+
+// Sales profitability analysis endpoint (/api/sales/profitability) if not present
+addPath('/api/sales/profitability', {
+  get: {
+    summary: 'Get sales profitability analysis (aggregated KPIs)',
+    tags: ['Sales'],
+    parameters: [
+      { in: 'query', name: 'startDate', schema: { type: 'string', format: 'date' } },
+      { in: 'query', name: 'endDate', schema: { type: 'string', format: 'date' } }
+    ],
+    responses: {
+      200: {
+        description: 'Profitability metrics retrieved successfully',
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              properties: {
+                success: { type: 'boolean', example: true },
+                data: {
+                  type: 'object',
+                  properties: {
+                    totalRevenue: { type: 'number', example: 150000000 },
+                    totalCost: { type: 'number', example: 120000000 },
+                    totalProfit: { type: 'number', example: 30000000 },
+                    profitMargin: { type: 'string', example: '20.00' }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+});
+
+// Inventory turnover based on sales/purchases (/api/sales/inventory-turnover)
+addPath('/api/sales/inventory-turnover', {
+  get: {
+    summary: 'Get inventory turnover metrics',
+    tags: ['Sales'],
+    parameters: [
+      { in: 'query', name: 'startDate', schema: { type: 'string', format: 'date' } },
+      { in: 'query', name: 'endDate', schema: { type: 'string', format: 'date' } }
+    ],
+    responses: {
+      200: {
+        description: 'Inventory turnover metrics retrieved successfully',
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              properties: {
+                success: { type: 'boolean', example: true },
+                data: {
+                  type: 'object',
+                  properties: {
+                    averageInventory: { type: 'number', example: 50000 },
+                    costOfGoodsSold: { type: 'number', example: 120000000 },
+                    turnoverRatio: { type: 'number', example: 2.4 },
+                    daysInInventory: { type: 'number', example: 152.08 }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+});
+
+// Invoice mark as paid endpoint
+addPath('/api/invoices/{id}/paid', {
+  patch: {
+    summary: 'Mark an invoice as paid (idempotent)',
+    tags: ['Invoices'],
+    parameters: [
+      { in: 'path', name: 'id', required: true, schema: { type: 'integer' } }
+    ],
+    responses: {
+      200: {
+        description: 'Invoice marked as paid',
+        content: {
+          'application/json': {
+            schema: { $ref: '#/components/schemas/Invoice' }
+          }
+        }
+      },
+      404: { $ref: '#/components/responses/NotFound' }
+    }
+  }
+});
+
+// Invoice item operations (create, update, delete)
+addPath('/api/invoices/{id}/items', {
+  post: {
+    summary: 'Add an item to an invoice',
+    tags: ['Invoices'],
+    parameters: [ { in: 'path', name: 'id', required: true, schema: { type: 'integer' } } ],
+    requestBody: {
+      required: true,
+      content: {
+        'application/json': { schema: { $ref: '#/components/schemas/InvoiceItemCreate' } }
+      }
+    },
+    responses: {
+      201: { description: 'Item added', content: { 'application/json': { schema: { $ref: '#/components/schemas/Invoice' } } } },
+      400: { $ref: '#/components/responses/BadRequest' },
+      404: { $ref: '#/components/responses/NotFound' }
+    }
+  }
+});
+
+addPath('/api/invoices/items/{itemId}', {
+  put: {
+    summary: 'Update an invoice item',
+    tags: ['Invoices'],
+    parameters: [ { in: 'path', name: 'itemId', required: true, schema: { type: 'integer' } } ],
+    requestBody: {
+      required: true,
+      content: { 'application/json': { schema: { $ref: '#/components/schemas/InvoiceItemCreate' } } }
+    },
+    responses: {
+      200: { description: 'Item updated', content: { 'application/json': { schema: { $ref: '#/components/schemas/Invoice' } } } },
+      400: { $ref: '#/components/responses/BadRequest' },
+      404: { $ref: '#/components/responses/NotFound' }
+    }
+  },
+  delete: {
+    summary: 'Delete an invoice item',
+    tags: ['Invoices'],
+    parameters: [ { in: 'path', name: 'itemId', required: true, schema: { type: 'integer' } } ],
+    responses: {
+      200: { description: 'Item deleted', content: { 'application/json': { schema: { $ref: '#/components/schemas/Success' } } } },
+      404: { $ref: '#/components/responses/NotFound' }
+    }
+  }
+});
+
 module.exports = specs;

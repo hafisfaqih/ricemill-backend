@@ -8,7 +8,10 @@ class SupplierController {
    */
   static async createSupplier(req, res) {
     try {
-      const supplier = await SupplierService.createSupplier(req.body);
+      // Backward compatibility (none currently needed, placeholder for future e.g. contact_person)
+      const body = { ...req.body };
+      if (body.contact_person && !body.contactPerson) body.contactPerson = body.contact_person;
+      const supplier = await SupplierService.createSupplier(body);
       
       res.status(201).json({
         success: true,
@@ -53,7 +56,9 @@ class SupplierController {
    */
   static async getAllSuppliers(req, res) {
     try {
-      const result = await SupplierService.getAllSuppliers(req.query);
+      const q = { ...req.query };
+      if (q.contact_person && !q.contactPerson) q.contactPerson = q.contact_person; // even if service not using directly
+      const result = await SupplierService.getAllSuppliers(q);
       
       res.status(200).json({
         success: true,
@@ -109,7 +114,9 @@ class SupplierController {
    */
   static async updateSupplier(req, res) {
     try {
-      const supplier = await SupplierService.updateSupplier(req.params.id, req.body);
+      const body = { ...req.body };
+      if (body.contact_person && !body.contactPerson) body.contactPerson = body.contact_person;
+      const supplier = await SupplierService.updateSupplier(req.params.id, body);
       
       res.status(200).json({
         success: true,

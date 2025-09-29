@@ -1,7 +1,7 @@
 const Invoice = require('../models/invoice');
 const InvoiceItem = require('../models/invoiceItem');
 const { Op } = require('sequelize');
-const moment = require('moment');
+// moment not required; using native Date
 
 class InvoiceService {
   /**
@@ -9,35 +9,33 @@ class InvoiceService {
    * @param {Object} invoiceData - Invoice data with items
    * @returns {Promise<Object>} Created invoice
    */
-  static async createInvoice(invoiceData) {
+  static async createInvoice(data) {
     try {
-      const { items, ...invoiceInfo } = invoiceData;
-
-      // Create invoice
-      const invoice = await Invoice.create(invoiceInfo);
-
-      // Create invoice items if provided
-      if (items && items.length > 0) {
-        const invoiceItems = items.map(item => ({
-          ...item,
-          invoice_id: invoice.id,
-        }));
-
-        await InvoiceItem.bulkCreate(invoiceItems);
+      const { items = [], ...info } = data;
+      // Normalize: if amount not provided but items provided, compute after items inserted (hookless manual)
+      const invoice = await Invoice.create(info);
+      if (items.length > 0) {
+        const prepared = items.map(it => ({ ...it, invoiceId: invoice.id }));
+          await InvoiceItem.bulkCreate(prepared.map(it => ({
+            ...it,
+            total: parseFloat(it.quantity) * parseFloat(it.price)
+          })));
+        // Recompute amount from items if not explicitly passed
+        if (!info.amount) {
+          const sumRows = await InvoiceItem.findAll({
+            where: { invoiceId: invoice.id },
+            attributes: [[InvoiceItem.sequelize.fn('SUM', InvoiceItem.sequelize.col('total')), 'total']],
+            raw: true,
+          });
+          const total = parseFloat(sumRows[0].total) || 0;
+          await invoice.update({ amount: total });
+        }
       }
-
-      // Fetch the complete invoice with items
-      return await Invoice.findByPk(invoice.id, {
-        include: [
-          {
-            model: InvoiceItem,
-            as: 'items',
-          },
-        ],
-      });
-    } catch (error) {
-      console.error('Error creating invoice:', error);
-      throw error;
+      const full = await Invoice.findByPk(invoice.id, { include: [{ model: InvoiceItem, as: 'items' }] });
+      return full;
+    } catch (err) {
+      console.error('Error creating invoice:', err);
+      throw err;
     }
   }
 
@@ -48,74 +46,32 @@ class InvoiceService {
    */
   static async getAllInvoices(options = {}) {
     try {
-      const {
-        page = 1,
-        limit = 10,
-        sortBy = 'createdAt',
-        sortOrder = 'DESC',
-        customer_name,
-        status,
-        startDate,
-        endDate,
-        minAmount,
-        maxAmount,
-        overdue,
-      } = options;
-
-      const offset = (page - 1) * limit;
-      const whereClause = {};
-
-      // Filter by customer name
-      if (customer_name) {
-        whereClause.customer_name = { [Op.iLike]: `%${customer_name}%` };
-      }
-
-      // Filter by status
-      if (status) {
-        whereClause.status = status;
-      }
-
-      // Filter by date range
+      const { page = 1, limit = 10, sortBy = 'date', sortOrder = 'DESC', customer, status, startDate, endDate, minAmount, maxAmount, overdue } = options;
+      const where = {};
+      if (customer) where.customer = { [Op.iLike]: `%${customer}%` };
+      if (status) where.status = status;
       if (startDate || endDate) {
-        whereClause.invoice_date = {};
-        if (startDate) {
-          whereClause.invoice_date[Op.gte] = new Date(startDate);
-        }
-        if (endDate) {
-          whereClause.invoice_date[Op.lte] = new Date(endDate);
-        }
+        where.date = {};
+        if (startDate) where.date[Op.gte] = new Date(startDate);
+        if (endDate) where.date[Op.lte] = new Date(endDate);
       }
-
-      // Filter by amount range
       if (minAmount || maxAmount) {
-        whereClause.total_amount = {};
-        if (minAmount) {
-          whereClause.total_amount[Op.gte] = parseFloat(minAmount);
-        }
-        if (maxAmount) {
-          whereClause.total_amount[Op.lte] = parseFloat(maxAmount);
-        }
+        where.amount = {};
+        if (minAmount) where.amount[Op.gte] = parseFloat(minAmount);
+        if (maxAmount) where.amount[Op.lte] = parseFloat(maxAmount);
       }
-
-      // Filter by overdue status
       if (overdue === 'true') {
-        whereClause.due_date = { [Op.lt]: new Date() };
-        whereClause.status = { [Op.ne]: 'paid' };
+        where.dueDate = { [Op.lt]: new Date() };
+        where.status = { [Op.ne]: 'paid' };
       }
-
+      const offset = (page - 1) * limit;
       const { count, rows } = await Invoice.findAndCountAll({
-        where: whereClause,
-        include: [
-          {
-            model: InvoiceItem,
-            as: 'items',
-          },
-        ],
+        where,
+        include: [{ model: InvoiceItem, as: 'items' }],
         order: [[sortBy, sortOrder.toUpperCase()]],
         limit: parseInt(limit),
-        offset: offset,
+        offset,
       });
-
       return {
         invoices: rows,
         pagination: {
@@ -125,9 +81,9 @@ class InvoiceService {
           itemsPerPage: parseInt(limit),
         },
       };
-    } catch (error) {
-      console.error('Error getting invoices:', error);
-      throw error;
+    } catch (err) {
+      console.error('Error getting invoices:', err);
+      throw err;
     }
   }
 
@@ -164,48 +120,36 @@ class InvoiceService {
    * @param {Object} updateData - Update data
    * @returns {Promise<Object>} Updated invoice
    */
-  static async updateInvoice(id, updateData) {
+  static async updateInvoice(id, data) {
     try {
-      const { items, ...invoiceUpdate } = updateData;
-
-      const invoice = await Invoice.findByPk(id);
-      if (!invoice) {
-        throw new Error('Invoice not found');
-      }
-
-      // Update invoice basic info
+      const { items, ...invoiceUpdate } = data;
+      const invoice = await Invoice.findByPk(id, { include: [{ model: InvoiceItem, as: 'items' }] });
+      if (!invoice) throw new Error('Invoice not found');
       await invoice.update(invoiceUpdate);
-
-      // Update items if provided
       if (items) {
-        // Delete existing items
-        await InvoiceItem.destroy({
-          where: { invoice_id: id },
-        });
-
-        // Create new items
+        await InvoiceItem.destroy({ where: { invoiceId: id } });
         if (items.length > 0) {
-          const invoiceItems = items.map(item => ({
-            ...item,
-            invoice_id: id,
-          }));
-
-          await InvoiceItem.bulkCreate(invoiceItems);
+          const prepared = items.map(it => ({ ...it, invoiceId: id }));
+            await InvoiceItem.bulkCreate(prepared.map(it => ({
+              ...it,
+              total: parseFloat(it.quantity) * parseFloat(it.price)
+            })));
+          // If amount not provided, recalc
+          if (!invoiceUpdate.amount) {
+            const sumRows = await InvoiceItem.findAll({
+              where: { invoiceId: id },
+              attributes: [[InvoiceItem.sequelize.fn('SUM', InvoiceItem.sequelize.col('total')), 'total']],
+              raw: true,
+            });
+            const total = parseFloat(sumRows[0].total) || 0;
+            await invoice.update({ amount: total });
+          }
         }
       }
-
-      // Return updated invoice with items
-      return await Invoice.findByPk(id, {
-        include: [
-          {
-            model: InvoiceItem,
-            as: 'items',
-          },
-        ],
-      });
-    } catch (error) {
-      console.error('Error updating invoice:', error);
-      throw error;
+      return await Invoice.findByPk(id, { include: [{ model: InvoiceItem, as: 'items' }] });
+    } catch (err) {
+      console.error('Error updating invoice:', err);
+      throw err;
     }
   }
 
@@ -217,58 +161,31 @@ class InvoiceService {
   static async deleteInvoice(id) {
     try {
       const invoice = await Invoice.findByPk(id);
-      if (!invoice) {
-        throw new Error('Invoice not found');
-      }
-
-      // Delete associated items first
-      await InvoiceItem.destroy({
-        where: { invoice_id: id },
-      });
-
-      // Delete invoice
+      if (!invoice) throw new Error('Invoice not found');
+      await InvoiceItem.destroy({ where: { invoiceId: id } });
       await invoice.destroy();
-    } catch (error) {
-      console.error('Error deleting invoice:', error);
-      throw error;
+      return true;
+    } catch (err) {
+      console.error('Error marking invoice as paid:', err);
+      throw err;
     }
   }
 
   /**
    * Mark invoice as paid
    * @param {number} id - Invoice ID
-   * @param {Object} paymentData - Payment information
-   * @returns {Promise<Object>} Updated invoice
+   * @returns {Promise<Object>} Paid invoice with items
    */
-  static async markAsPaid(id, paymentData = {}) {
+  static async markAsPaid(id) {
     try {
-      const invoice = await Invoice.findByPk(id);
-      if (!invoice) {
-        throw new Error('Invoice not found');
-      }
-
-      if (invoice.status === 'paid') {
-        throw new Error('Invoice is already paid');
-      }
-
-      await invoice.update({
-        status: 'paid',
-        paid_date: paymentData.paid_date || new Date(),
-        payment_method: paymentData.payment_method || null,
-        payment_notes: paymentData.payment_notes || null,
-      });
-
-      return await Invoice.findByPk(id, {
-        include: [
-          {
-            model: InvoiceItem,
-            as: 'items',
-          },
-        ],
-      });
-    } catch (error) {
-      console.error('Error marking invoice as paid:', error);
-      throw error;
+      const invoice = await Invoice.findByPk(id, { include: [{ model: InvoiceItem, as: 'items' }] });
+      if (!invoice) throw new Error('Invoice not found');
+      if (invoice.status === 'paid') throw new Error('Invoice is already paid');
+      await invoice.update({ status: 'paid' });
+      return invoice;
+    } catch (err) {
+      console.error('Error marking invoice as paid:', err);
+      throw err;
     }
   }
 
@@ -281,26 +198,22 @@ class InvoiceService {
   static async addInvoiceItem(invoiceId, itemData) {
     try {
       const invoice = await Invoice.findByPk(invoiceId);
-      if (!invoice) {
-        throw new Error('Invoice not found');
-      }
-
-      if (invoice.status === 'paid') {
-        throw new Error('Cannot add items to paid invoice');
-      }
-
-      const item = await InvoiceItem.create({
-        ...itemData,
-        invoice_id: invoiceId,
+      if (!invoice) throw new Error('Invoice not found');
+      if (invoice.status === 'paid') throw new Error('Cannot add items to paid invoice');
+      const computedTotal = parseFloat(itemData.quantity) * parseFloat(itemData.price);
+      const item = await InvoiceItem.create({ ...itemData, invoiceId, total: computedTotal });
+      // Recalculate amount
+      const sumRows = await InvoiceItem.findAll({
+        where: { invoiceId },
+        attributes: [[InvoiceItem.sequelize.fn('SUM', InvoiceItem.sequelize.col('total')), 'total']],
+        raw: true,
       });
-
-      // Update invoice total (this will be handled by the model hook)
-      await invoice.reload();
-
+      const total = parseFloat(sumRows[0].total) || 0;
+      await invoice.update({ amount: total });
       return item;
-    } catch (error) {
-      console.error('Error adding invoice item:', error);
-      throw error;
+    } catch (err) {
+      console.error('Error adding invoice item:', err);
+      throw err;
     }
   }
 
@@ -312,27 +225,27 @@ class InvoiceService {
    */
   static async updateInvoiceItem(itemId, updateData) {
     try {
-      const item = await InvoiceItem.findByPk(itemId, {
-        include: [{ model: Invoice, as: 'invoice' }],
+      const item = await InvoiceItem.findByPk(itemId, { include: [{ model: Invoice, as: 'invoice' }] });
+      if (!item) throw new Error('Invoice item not found');
+      if (item.invoice.status === 'paid') throw new Error('Cannot update items of paid invoice');
+      const patch = { ...updateData };
+      if (patch.quantity != null || patch.price != null) {
+        const newQty = patch.quantity != null ? patch.quantity : item.quantity;
+        const newPrice = patch.price != null ? patch.price : item.price;
+        patch.total = parseFloat(newQty) * parseFloat(newPrice);
+      }
+      await item.update(patch);
+      const sumRows = await InvoiceItem.findAll({
+        where: { invoiceId: item.invoiceId },
+        attributes: [[InvoiceItem.sequelize.fn('SUM', InvoiceItem.sequelize.col('total')), 'total']],
+        raw: true,
       });
-
-      if (!item) {
-        throw new Error('Invoice item not found');
-      }
-
-      if (item.invoice.status === 'paid') {
-        throw new Error('Cannot update items of paid invoice');
-      }
-
-      await item.update(updateData);
-
-      // Reload invoice to update totals
-      await item.invoice.reload();
-
+      const total = parseFloat(sumRows[0].total) || 0;
+      await item.invoice.update({ amount: total });
       return item;
-    } catch (error) {
-      console.error('Error updating invoice item:', error);
-      throw error;
+    } catch (err) {
+      console.error('Error updating invoice item:', err);
+      throw err;
     }
   }
 
@@ -343,25 +256,22 @@ class InvoiceService {
    */
   static async deleteInvoiceItem(itemId) {
     try {
-      const item = await InvoiceItem.findByPk(itemId, {
-        include: [{ model: Invoice, as: 'invoice' }],
-      });
-
-      if (!item) {
-        throw new Error('Invoice item not found');
-      }
-
-      if (item.invoice.status === 'paid') {
-        throw new Error('Cannot delete items from paid invoice');
-      }
-
+      const item = await InvoiceItem.findByPk(itemId, { include: [{ model: Invoice, as: 'invoice' }] });
+      if (!item) throw new Error('Invoice item not found');
+      if (item.invoice.status === 'paid') throw new Error('Cannot delete items from paid invoice');
+      const invoiceId = item.invoiceId;
       await item.destroy();
-
-      // Reload invoice to update totals
-      await item.invoice.reload();
-    } catch (error) {
-      console.error('Error deleting invoice item:', error);
-      throw error;
+      const sumRows = await InvoiceItem.findAll({
+        where: { invoiceId },
+        attributes: [[InvoiceItem.sequelize.fn('SUM', InvoiceItem.sequelize.col('total')), 'total']],
+        raw: true,
+      });
+      const total = parseFloat(sumRows[0].total) || 0;
+      const invoice = await Invoice.findByPk(invoiceId);
+      if (invoice) await invoice.update({ amount: total });
+    } catch (err) {
+      console.error('Error deleting invoice item:', err);
+      throw err;
     }
   }
 
@@ -375,26 +285,18 @@ class InvoiceService {
       const invoices = await Invoice.findAll({
         where: {
           [Op.or]: [
-            { invoice_number: { [Op.iLike]: `%${searchTerm}%` } },
-            { customer_name: { [Op.iLike]: `%${searchTerm}%` } },
-            { customer_email: { [Op.iLike]: `%${searchTerm}%` } },
-            { customer_phone: { [Op.iLike]: `%${searchTerm}%` } },
+            { invoiceNumber: { [Op.iLike]: `%${searchTerm}%` } },
+            { customer: { [Op.iLike]: `%${searchTerm}%` } },
           ],
         },
-        include: [
-          {
-            model: InvoiceItem,
-            as: 'items',
-          },
-        ],
-        order: [['invoice_date', 'DESC']],
-        limit: 20,
+        include: [{ model: InvoiceItem, as: 'items' }],
+        order: [['date', 'DESC']],
+        limit: 30,
       });
-
       return invoices;
-    } catch (error) {
-      console.error('Error searching invoices:', error);
-      throw error;
+    } catch (err) {
+      console.error('Error searching invoices:', err);
+      throw err;
     }
   }
 
@@ -406,33 +308,19 @@ class InvoiceService {
   static async getOverdueInvoices(options = {}) {
     try {
       const { limit = 50, sortOrder = 'ASC' } = options;
-
-      const overdueInvoices = await Invoice.findAll({
-        where: {
-          due_date: { [Op.lt]: new Date() },
-          status: { [Op.ne]: 'paid' },
-        },
-        include: [
-          {
-            model: InvoiceItem,
-            as: 'items',
-          },
-        ],
-        order: [['due_date', sortOrder.toUpperCase()]],
+      const rows = await Invoice.findAll({
+        where: { dueDate: { [Op.lt]: new Date() }, status: { [Op.ne]: 'paid' } },
+        include: [{ model: InvoiceItem, as: 'items' }],
+        order: [['dueDate', sortOrder.toUpperCase()]],
         limit: parseInt(limit),
       });
-
-      // Calculate days overdue for each invoice
-      return overdueInvoices.map(invoice => {
-        const daysOverdue = Math.floor((new Date() - new Date(invoice.due_date)) / (1000 * 60 * 60 * 24));
-        return {
-          ...invoice.toJSON(),
-          daysOverdue,
-        };
+      return rows.map(inv => {
+        const daysOverdue = Math.floor((new Date() - new Date(inv.dueDate)) / (1000 * 60 * 60 * 24));
+        return { ...inv.toJSON(), daysOverdue };
       });
-    } catch (error) {
-      console.error('Error getting overdue invoices:', error);
-      throw error;
+    } catch (err) {
+      console.error('Error getting overdue invoices:', err);
+      throw err;
     }
   }
 
@@ -444,96 +332,67 @@ class InvoiceService {
   static async getInvoiceStats(options = {}) {
     try {
       const { startDate, endDate, status } = options;
-      const whereClause = {};
-
-      // Filter by date range
+      const where = {};
       if (startDate || endDate) {
-        whereClause.invoice_date = {};
-        if (startDate) {
-          whereClause.invoice_date[Op.gte] = new Date(startDate);
-        }
-        if (endDate) {
-          whereClause.invoice_date[Op.lte] = new Date(endDate);
-        }
+        where.date = {};
+        if (startDate) where.date[Op.gte] = new Date(startDate);
+        if (endDate) where.date[Op.lte] = new Date(endDate);
       }
-
-      // Filter by status
-      if (status) {
-        whereClause.status = status;
-      }
-
-      const totalStats = await Invoice.findAll({
-        where: whereClause,
+      if (status) where.status = status;
+      const totals = await Invoice.findAll({
+        where,
         attributes: [
           [Invoice.sequelize.fn('COUNT', Invoice.sequelize.col('id')), 'totalInvoices'],
-          [Invoice.sequelize.fn('SUM', Invoice.sequelize.col('total_amount')), 'totalAmount'],
-          [Invoice.sequelize.fn('AVG', Invoice.sequelize.col('total_amount')), 'avgAmount'],
+          [Invoice.sequelize.fn('SUM', Invoice.sequelize.col('amount')), 'totalAmount'],
+          [Invoice.sequelize.fn('AVG', Invoice.sequelize.col('amount')), 'avgAmount'],
         ],
         raw: true,
       });
-
-      const statusStats = await Invoice.findAll({
-        where: startDate || endDate ? { 
-          ...whereClause,
-          status: whereClause.status || { [Op.ne]: null }
-        } : whereClause,
+      const statusRows = await Invoice.findAll({
+        where,
         attributes: [
           'status',
           [Invoice.sequelize.fn('COUNT', Invoice.sequelize.col('id')), 'count'],
-          [Invoice.sequelize.fn('SUM', Invoice.sequelize.col('total_amount')), 'amount'],
+          [Invoice.sequelize.fn('SUM', Invoice.sequelize.col('amount')), 'amount'],
         ],
         group: ['status'],
         raw: true,
       });
-
-      const overdueStats = await Invoice.findAll({
-        where: {
-          ...whereClause,
-          due_date: { [Op.lt]: new Date() },
-          status: { [Op.ne]: 'paid' },
-        },
+      const overdueRows = await Invoice.findAll({
+        where: { ...where, dueDate: { [Op.lt]: new Date() }, status: { [Op.ne]: 'paid' } },
         attributes: [
           [Invoice.sequelize.fn('COUNT', Invoice.sequelize.col('id')), 'overdueCount'],
-          [Invoice.sequelize.fn('SUM', Invoice.sequelize.col('total_amount')), 'overdueAmount'],
+          [Invoice.sequelize.fn('SUM', Invoice.sequelize.col('amount')), 'overdueAmount'],
         ],
         raw: true,
       });
-
-      const customerStats = await Invoice.findAll({
-        where: whereClause,
+      const customerRows = await Invoice.findAll({
+        where,
         attributes: [
-          'customer_name',
+          'customer',
           [Invoice.sequelize.fn('COUNT', Invoice.sequelize.col('id')), 'invoiceCount'],
-          [Invoice.sequelize.fn('SUM', Invoice.sequelize.col('total_amount')), 'totalAmount'],
+          [Invoice.sequelize.fn('SUM', Invoice.sequelize.col('amount')), 'totalAmount'],
         ],
-        group: ['customer_name'],
-        order: [[Invoice.sequelize.fn('SUM', Invoice.sequelize.col('total_amount')), 'DESC']],
+        group: ['customer'],
+        order: [[Invoice.sequelize.fn('SUM', Invoice.sequelize.col('amount')), 'DESC']],
         limit: 10,
         raw: true,
       });
-
+      const t = totals[0] || {};
       return {
         summary: {
-          totalInvoices: parseInt(totalStats[0].totalInvoices) || 0,
-          totalAmount: parseFloat(totalStats[0].totalAmount) || 0,
-          avgAmount: parseFloat(totalStats[0].avgAmount) || 0,
-          overdueCount: parseInt(overdueStats[0]?.overdueCount) || 0,
-          overdueAmount: parseFloat(overdueStats[0]?.overdueAmount) || 0,
+          totalInvoices: parseInt(t.totalInvoices) || 0,
+          totalAmount: parseFloat(t.totalAmount) || 0,
+          avgAmount: parseFloat(t.avgAmount) || 0,
+          overdueCount: parseInt(overdueRows[0]?.overdueCount) || 0,
+          overdueAmount: parseFloat(overdueRows[0]?.overdueAmount) || 0,
         },
-        statusBreakdown: statusStats.map(item => ({
-          status: item.status,
-          count: parseInt(item.count),
-          amount: parseFloat(item.amount),
-        })),
-        topCustomers: customerStats.map(item => ({
-          customerName: item.customer_name,
-          invoiceCount: parseInt(item.invoiceCount),
-          totalAmount: parseFloat(item.totalAmount),
-        })),
+        statusBreakdown: statusRows.map(r => ({ status: r.status, count: parseInt(r.count), amount: parseFloat(r.amount) })),
+        topCustomers: customerRows.map(r => ({ customer: r.customer, invoiceCount: parseInt(r.invoiceCount), totalAmount: parseFloat(r.totalAmount) })),
       };
-    } catch (error) {
-      console.error('Error getting invoice statistics:', error);
-      throw error;
+    } catch (err) {
+      console.error('Error getting invoice statistics:', err);
+      throw err;
     }
   }
 
@@ -544,45 +403,38 @@ class InvoiceService {
    */
   static async getMonthlyTrends(year = new Date().getFullYear()) {
     try {
-      const monthlyData = await Invoice.findAll({
-        where: {
-          invoice_date: {
-            [Op.between]: [`${year}-01-01`, `${year}-12-31`],
-          },
-        },
+      const rows = await Invoice.findAll({
+        where: { date: { [Op.between]: [`${year}-01-01`, `${year}-12-31`] } },
         attributes: [
-          [Invoice.sequelize.fn('EXTRACT', Invoice.sequelize.literal('MONTH FROM invoice_date')), 'month'],
+          [Invoice.sequelize.fn('EXTRACT', Invoice.sequelize.literal('MONTH FROM date')), 'month'],
           [Invoice.sequelize.fn('COUNT', Invoice.sequelize.col('id')), 'invoiceCount'],
-          [Invoice.sequelize.fn('SUM', Invoice.sequelize.col('total_amount')), 'totalAmount'],
+          [Invoice.sequelize.fn('SUM', Invoice.sequelize.col('amount')), 'totalAmount'],
           [Invoice.sequelize.fn('COUNT', Invoice.sequelize.literal("CASE WHEN status = 'paid' THEN 1 END")), 'paidCount'],
-          [Invoice.sequelize.fn('SUM', Invoice.sequelize.literal("CASE WHEN status = 'paid' THEN total_amount ELSE 0 END")), 'paidAmount'],
+          [Invoice.sequelize.fn('SUM', Invoice.sequelize.literal("CASE WHEN status = 'paid' THEN amount ELSE 0 END")), 'paidAmount'],
         ],
-        group: [Invoice.sequelize.fn('EXTRACT', Invoice.sequelize.literal('MONTH FROM invoice_date'))],
-        order: [Invoice.sequelize.fn('EXTRACT', Invoice.sequelize.literal('MONTH FROM invoice_date'))],
+        group: [Invoice.sequelize.fn('EXTRACT', Invoice.sequelize.literal('MONTH FROM date'))],
+        order: [Invoice.sequelize.fn('EXTRACT', Invoice.sequelize.literal('MONTH FROM date'))],
         raw: true,
       });
-
-      // Fill in missing months with zero values
       const trends = [];
-      for (let month = 1; month <= 12; month++) {
-        const monthData = monthlyData.find(item => parseInt(item.month) === month);
+      for (let m = 1; m <= 12; m++) {
+        const md = rows.find(r => parseInt(r.month) === m);
+        const totalAmount = md ? parseFloat(md.totalAmount) : 0;
+        const paidAmount = md ? parseFloat(md.paidAmount) : 0;
         trends.push({
-          month,
-          monthName: new Date(year, month - 1).toLocaleString('default', { month: 'long' }),
-          invoiceCount: monthData ? parseInt(monthData.invoiceCount) : 0,
-          totalAmount: monthData ? parseFloat(monthData.totalAmount) : 0,
-          paidCount: monthData ? parseInt(monthData.paidCount) : 0,
-          paidAmount: monthData ? parseFloat(monthData.paidAmount) : 0,
-          collectionRate: monthData && monthData.totalAmount > 0 
-            ? ((monthData.paidAmount / monthData.totalAmount) * 100).toFixed(2)
-            : 0,
+          month: m,
+          monthName: new Date(year, m - 1).toLocaleString('default', { month: 'long' }),
+          invoiceCount: md ? parseInt(md.invoiceCount) : 0,
+          totalAmount,
+          paidCount: md ? parseInt(md.paidCount) : 0,
+          paidAmount,
+          collectionRate: totalAmount > 0 ? ((paidAmount / totalAmount) * 100).toFixed(2) : 0,
         });
       }
-
       return trends;
-    } catch (error) {
-      console.error('Error getting monthly trends:', error);
-      throw error;
+    } catch (err) {
+      console.error('Error getting monthly trends:', err);
+      throw err;
     }
   }
 
@@ -595,27 +447,19 @@ class InvoiceService {
     try {
       const year = date.getFullYear();
       const month = String(date.getMonth() + 1).padStart(2, '0');
-      
-      // Find the last invoice number for this month
-      const lastInvoice = await Invoice.findOne({
-        where: {
-          invoice_number: {
-            [Op.like]: `INV-${year}${month}-%`
-          }
-        },
-        order: [['invoice_number', 'DESC']],
+      const last = await Invoice.findOne({
+        where: { invoiceNumber: { [Op.like]: `INV-${year}${month}-%` } },
+        order: [['invoiceNumber', 'DESC']],
       });
-
       let sequence = 1;
-      if (lastInvoice) {
-        const lastSequence = lastInvoice.invoice_number.split('-')[2];
-        sequence = parseInt(lastSequence) + 1;
+      if (last) {
+        const lastSeq = last.invoiceNumber.split('-')[2];
+        sequence = parseInt(lastSeq) + 1;
       }
-
       return `INV-${year}${month}-${String(sequence).padStart(4, '0')}`;
-    } catch (error) {
-      console.error('Error generating invoice number:', error);
-      throw error;
+    } catch (err) {
+      console.error('Error generating invoice number:', err);
+      throw err;
     }
   }
 
@@ -625,81 +469,35 @@ class InvoiceService {
    */
   static async getAgingReport() {
     try {
-      const currentDate = new Date();
-      const unpaidInvoices = await Invoice.findAll({
-        where: {
-          status: { [Op.ne]: 'paid' },
-        },
-        include: [
-          {
-            model: InvoiceItem,
-            as: 'items',
-          },
-        ],
-        order: [['due_date', 'ASC']],
+      const now = new Date();
+      const rows = await Invoice.findAll({
+        where: { status: { [Op.ne]: 'paid' } },
+        include: [{ model: InvoiceItem, as: 'items' }],
+        order: [['dueDate', 'ASC']],
       });
-
-      const agingBuckets = {
+      const buckets = {
         current: { invoices: [], amount: 0 },
         overdue1_30: { invoices: [], amount: 0 },
         overdue31_60: { invoices: [], amount: 0 },
         overdue61_90: { invoices: [], amount: 0 },
         overdue90Plus: { invoices: [], amount: 0 },
       };
-
-      unpaidInvoices.forEach(invoice => {
-        const daysOverdue = Math.floor((currentDate - new Date(invoice.due_date)) / (1000 * 60 * 60 * 24));
-        const invoiceWithDays = { ...invoice.toJSON(), daysOverdue };
-
-        if (daysOverdue < 0) {
-          agingBuckets.current.invoices.push(invoiceWithDays);
-          agingBuckets.current.amount += invoice.total_amount;
-        } else if (daysOverdue <= 30) {
-          agingBuckets.overdue1_30.invoices.push(invoiceWithDays);
-          agingBuckets.overdue1_30.amount += invoice.total_amount;
-        } else if (daysOverdue <= 60) {
-          agingBuckets.overdue31_60.invoices.push(invoiceWithDays);
-          agingBuckets.overdue31_60.amount += invoice.total_amount;
-        } else if (daysOverdue <= 90) {
-          agingBuckets.overdue61_90.invoices.push(invoiceWithDays);
-          agingBuckets.overdue61_90.amount += invoice.total_amount;
-        } else {
-          agingBuckets.overdue90Plus.invoices.push(invoiceWithDays);
-          agingBuckets.overdue90Plus.amount += invoice.total_amount;
-        }
+      rows.forEach(inv => {
+        const daysOverdue = Math.floor((now - new Date(inv.dueDate)) / (1000 * 60 * 60 * 24));
+        const dto = { ...inv.toJSON(), daysOverdue };
+        const amt = parseFloat(inv.amount) || 0;
+        if (daysOverdue < 0) { buckets.current.invoices.push(dto); buckets.current.amount += amt; }
+        else if (daysOverdue <= 30) { buckets.overdue1_30.invoices.push(dto); buckets.overdue1_30.amount += amt; }
+        else if (daysOverdue <= 60) { buckets.overdue31_60.invoices.push(dto); buckets.overdue31_60.amount += amt; }
+        else if (daysOverdue <= 90) { buckets.overdue61_90.invoices.push(dto); buckets.overdue61_90.amount += amt; }
+        else { buckets.overdue90Plus.invoices.push(dto); buckets.overdue90Plus.amount += amt; }
       });
-
-      const totalAmount = Object.values(agingBuckets).reduce((sum, bucket) => sum + bucket.amount, 0);
-
-      return {
-        totalUnpaidAmount: totalAmount,
-        totalUnpaidInvoices: unpaidInvoices.length,
-        agingBuckets: {
-          current: {
-            ...agingBuckets.current,
-            percentage: totalAmount > 0 ? ((agingBuckets.current.amount / totalAmount) * 100).toFixed(2) : 0,
-          },
-          overdue1_30: {
-            ...agingBuckets.overdue1_30,
-            percentage: totalAmount > 0 ? ((agingBuckets.overdue1_30.amount / totalAmount) * 100).toFixed(2) : 0,
-          },
-          overdue31_60: {
-            ...agingBuckets.overdue31_60,
-            percentage: totalAmount > 0 ? ((agingBuckets.overdue31_60.amount / totalAmount) * 100).toFixed(2) : 0,
-          },
-          overdue61_90: {
-            ...agingBuckets.overdue61_90,
-            percentage: totalAmount > 0 ? ((agingBuckets.overdue61_90.amount / totalAmount) * 100).toFixed(2) : 0,
-          },
-          overdue90Plus: {
-            ...agingBuckets.overdue90Plus,
-            percentage: totalAmount > 0 ? ((agingBuckets.overdue90Plus.amount / totalAmount) * 100).toFixed(2) : 0,
-          },
-        },
-      };
-    } catch (error) {
-      console.error('Error getting aging report:', error);
-      throw error;
+      const totalAmount = Object.values(buckets).reduce((s, b) => s + b.amount, 0);
+      const withPct = Object.fromEntries(Object.entries(buckets).map(([k, v]) => [k, { ...v, percentage: totalAmount > 0 ? ((v.amount / totalAmount) * 100).toFixed(2) : 0 }]));
+      return { totalUnpaidAmount: totalAmount, totalUnpaidInvoices: rows.length, agingBuckets: withPct };
+    } catch (err) {
+      console.error('Error getting aging report:', err);
+      throw err;
     }
   }
 }

@@ -2,8 +2,11 @@ const Joi = require('joi');
 
 // Validation schema for creating a new invoice
 const validateInvoiceCreate = (data) => {
+  // Backward compatibility mapping
+  if (data && data.invoice_number && !data.invoiceNumber) data.invoiceNumber = data.invoice_number;
+  if (data && data.due_date && !data.dueDate) data.dueDate = data.due_date;
   const schema = Joi.object({
-    invoice_number: Joi.string().trim().max(50).required().messages({
+    invoiceNumber: Joi.string().trim().max(50).required().messages({
       'string.base': 'Invoice number must be a string',
       'string.empty': 'Invoice number cannot be empty',
       'string.max': 'Invoice number cannot exceed 50 characters',
@@ -25,7 +28,7 @@ const validateInvoiceCreate = (data) => {
       'number.positive': 'Amount must be positive',
       'any.required': 'Amount is required'
     }),
-    due_date: Joi.date().iso().min(Joi.ref('date')).required().messages({
+    dueDate: Joi.date().iso().min(Joi.ref('date')).required().messages({
       'date.base': 'Due date must be a valid date',
       'date.format': 'Due date must be in ISO format',
       'date.min': 'Due date must be after invoice date',
@@ -65,8 +68,10 @@ const validateInvoiceCreate = (data) => {
 
 // Validation schema for updating an invoice
 const validateInvoiceUpdate = (data) => {
+  if (data && data.invoice_number && !data.invoiceNumber) data.invoiceNumber = data.invoice_number;
+  if (data && data.due_date && !data.dueDate) data.dueDate = data.due_date;
   const schema = Joi.object({
-    invoice_number: Joi.string().trim().max(50).messages({
+    invoiceNumber: Joi.string().trim().max(50).messages({
       'string.base': 'Invoice number must be a string',
       'string.empty': 'Invoice number cannot be empty',
       'string.max': 'Invoice number cannot exceed 50 characters'
@@ -84,7 +89,7 @@ const validateInvoiceUpdate = (data) => {
       'number.base': 'Amount must be a number',
       'number.positive': 'Amount must be positive'
     }),
-    due_date: Joi.date().iso().when('date', {
+    dueDate: Joi.date().iso().when('date', {
       is: Joi.exist(),
       then: Joi.date().min(Joi.ref('date')),
       otherwise: Joi.date()
@@ -103,9 +108,10 @@ const validateInvoiceUpdate = (data) => {
 
 // Validation schema for invoice search/filter parameters
 const validateInvoiceSearch = (data) => {
+  if (data && data.invoice_number && !data.invoiceNumber) data.invoiceNumber = data.invoice_number;
+  if (data && data.due_date && !data.dueDate) data.dueDate = data.due_date;
   const schema = Joi.object({
-    // Invoice number search
-    invoice_number: Joi.string().trim().messages({
+    invoiceNumber: Joi.string().trim().messages({
       'string.base': 'Invoice number must be a string'
     }),
     
@@ -175,8 +181,8 @@ const validateInvoiceSearch = (data) => {
     }),
     
     // Sorting
-    sortBy: Joi.string().valid('date', 'due_date', 'amount', 'customer', 'invoice_number', 'status', 'created_at').default('date').messages({
-      'any.only': 'Sort by must be one of: date, due_date, amount, customer, invoice_number, status, created_at'
+    sortBy: Joi.string().valid('date', 'dueDate', 'amount', 'customer', 'invoiceNumber', 'status', 'created_at').default('date').messages({
+      'any.only': 'Sort by must be one of: date, dueDate, amount, customer, invoiceNumber, status, created_at'
     }),
     sortOrder: Joi.string().valid('ASC', 'DESC', 'asc', 'desc').default('DESC').messages({
       'any.only': 'Sort order must be ASC or DESC'

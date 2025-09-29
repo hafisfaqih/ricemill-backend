@@ -49,11 +49,8 @@ const Invoice = sequelize.define('Invoice', {
   },
   amount: {
     type: DataTypes.DECIMAL(15, 2),
-    allowNull: false,
+    allowNull: true, // Will be computed from items if not provided
     validate: {
-      notEmpty: {
-        msg: 'Invoice amount is required',
-      },
       isDecimal: {
         msg: 'Invoice amount must be a decimal number',
       },
@@ -127,6 +124,7 @@ const Invoice = sequelize.define('Invoice', {
         const timestamp = Date.now().toString().slice(-4); // Last 4 digits of timestamp
         invoice.invoiceNumber = `INV-${year}${month}${day}-${timestamp}`;
       }
+      // If amount explicitly zero or missing with items (items created later), leave null; service will recalc after items insert
     },
   },
 });

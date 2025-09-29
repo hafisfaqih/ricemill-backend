@@ -11,7 +11,7 @@ class PurchaseService {
   static async createPurchase(purchaseData) {
     try {
       // Verify supplier exists and is active
-      const supplier = await Supplier.findByPk(purchaseData.supplier_id);
+      const supplier = await Supplier.findByPk(purchaseData.supplierId);
       if (!supplier) {
         throw new Error('Supplier not found');
       }
@@ -24,8 +24,8 @@ class PurchaseService {
         include: [
           {
             model: Supplier,
-            as: 'supplier',
-            attributes: ['id', 'name', 'contact_person', 'phone', 'email', 'address'],
+            as: 'supplierData',
+            attributes: ['id', 'name', 'contact_person', 'phone', 'address'],
           },
         ],
       });
@@ -45,51 +45,35 @@ class PurchaseService {
       const {
         page = 1,
         limit = 10,
-        sortBy = 'createdAt',
+        sortBy = 'date',
         sortOrder = 'DESC',
-        supplier_id,
+        supplierId,
         startDate,
         endDate,
-        minAmount,
-        maxAmount,
-        riceType,
+        minTotalCost,
+        maxTotalCost,
       } = options;
 
       const offset = (page - 1) * limit;
       const whereClause = {};
 
       // Filter by supplier
-      if (supplier_id) {
-        whereClause.supplier_id = supplier_id;
+      if (supplierId) {
+        whereClause.supplierId = supplierId;
       }
 
       // Filter by date range
       if (startDate || endDate) {
-        whereClause.purchase_date = {};
-        if (startDate) {
-          whereClause.purchase_date[Op.gte] = new Date(startDate);
-        }
-        if (endDate) {
-          whereClause.purchase_date[Op.lte] = new Date(endDate);
-        }
+        whereClause.date = {};
+        if (startDate) whereClause.date[Op.gte] = new Date(startDate);
+        if (endDate) whereClause.date[Op.lte] = new Date(endDate);
       }
 
       // Filter by amount range
-      if (minAmount || maxAmount) {
-        whereClause.total_cost = {};
-        if (minAmount) {
-          whereClause.total_cost[Op.gte] = parseFloat(minAmount);
-        }
-        if (maxAmount) {
-          whereClause.total_cost[Op.lte] = parseFloat(maxAmount);
-        }
-      }
-
-      // Filter by rice type
-      if (riceType) {
-        whereClause.rice_type = {
-          [Op.iLike]: `%${riceType}%`,
-        };
+      if (minTotalCost || maxTotalCost) {
+        whereClause.totalCost = {};
+        if (minTotalCost) whereClause.totalCost[Op.gte] = parseFloat(minTotalCost);
+        if (maxTotalCost) whereClause.totalCost[Op.lte] = parseFloat(maxTotalCost);
       }
 
       const { count, rows } = await Purchase.findAndCountAll({
@@ -97,7 +81,7 @@ class PurchaseService {
         include: [
           {
             model: Supplier,
-            as: 'supplier',
+            as: 'supplierData',
             attributes: ['id', 'name', 'contact_person', 'phone', 'address'],
           },
         ],
@@ -132,8 +116,8 @@ class PurchaseService {
         include: [
           {
             model: Supplier,
-            as: 'supplier',
-            attributes: ['id', 'name', 'contact_person', 'phone', 'email', 'address'],
+            as: 'supplierData',
+            attributes: ['id', 'name', 'contact_person', 'phone', 'address'],
           },
         ],
       });
@@ -163,8 +147,8 @@ class PurchaseService {
       }
 
       // If supplier_id is being updated, verify the new supplier exists and is active
-      if (updateData.supplier_id && updateData.supplier_id !== purchase.supplier_id) {
-        const supplier = await Supplier.findByPk(updateData.supplier_id);
+      if (updateData.supplierId && updateData.supplierId !== purchase.supplierId) {
+        const supplier = await Supplier.findByPk(updateData.supplierId);
         if (!supplier) {
           throw new Error('Supplier not found');
         }
@@ -179,8 +163,8 @@ class PurchaseService {
         include: [
           {
             model: Supplier,
-            as: 'supplier',
-            attributes: ['id', 'name', 'contact_person', 'phone', 'email', 'address'],
+            as: 'supplierData',
+            attributes: ['id', 'name', 'contact_person', 'phone', 'address'],
           },
         ],
       });
@@ -225,7 +209,7 @@ class PurchaseService {
    */
   static async getPurchasesBySupplier(supplierId, options = {}) {
     try {
-      const { limit = 10, sortOrder = 'DESC' } = options;
+  const { limit = 10, sortOrder = 'DESC' } = options;
 
       const supplier = await Supplier.findByPk(supplierId);
       if (!supplier) {
@@ -233,15 +217,15 @@ class PurchaseService {
       }
 
       const purchases = await Purchase.findAll({
-        where: { supplier_id: supplierId },
+        where: { supplierId },
         include: [
           {
             model: Supplier,
-            as: 'supplier',
+            as: 'supplierData',
             attributes: ['id', 'name', 'contact_person'],
           },
         ],
-        order: [['purchase_date', sortOrder.toUpperCase()]],
+        order: [['date', sortOrder.toUpperCase()]],
         limit: parseInt(limit),
       });
 
@@ -259,29 +243,23 @@ class PurchaseService {
    */
   static async searchPurchases(searchTerm) {
     try {
+      // Current model does not have rice_type / quality / batch_number anymore
+      // So search limited to supplier name / contact person only.
       const purchases = await Purchase.findAll({
-        where: {
-          [Op.or]: [
-            { rice_type: { [Op.iLike]: `%${searchTerm}%` } },
-            { quality: { [Op.iLike]: `%${searchTerm}%` } },
-            { batch_number: { [Op.iLike]: `%${searchTerm}%` } },
-          ],
-        },
         include: [
           {
             model: Supplier,
-            as: 'supplier',
-            attributes: ['id', 'name', 'contact_person'],
+            as: 'supplierData',
+            attributes: ['id', 'name', 'contactPerson'],
             where: {
               [Op.or]: [
                 { name: { [Op.iLike]: `%${searchTerm}%` } },
                 { contact_person: { [Op.iLike]: `%${searchTerm}%` } },
               ],
             },
-            required: false,
           },
         ],
-        order: [['purchase_date', 'DESC']],
+        order: [['date', 'DESC']],
         limit: 20,
       });
 
@@ -299,65 +277,48 @@ class PurchaseService {
    */
   static async getPurchaseStats(options = {}) {
     try {
-      const { startDate, endDate, supplier_id } = options;
+  const { startDate, endDate, supplierId } = options;
       const whereClause = {};
 
       // Filter by date range
       if (startDate || endDate) {
-        whereClause.purchase_date = {};
-        if (startDate) {
-          whereClause.purchase_date[Op.gte] = new Date(startDate);
-        }
-        if (endDate) {
-          whereClause.purchase_date[Op.lte] = new Date(endDate);
-        }
+        whereClause.date = {};
+        if (startDate) whereClause.date[Op.gte] = new Date(startDate);
+        if (endDate) whereClause.date[Op.lte] = new Date(endDate);
       }
 
       // Filter by supplier
-      if (supplier_id) {
-        whereClause.supplier_id = supplier_id;
-      }
+      if (supplierId) whereClause.supplierId = supplierId;
 
       const stats = await Purchase.findAll({
         where: whereClause,
         attributes: [
           [Purchase.sequelize.fn('COUNT', Purchase.sequelize.col('id')), 'totalPurchases'],
           [Purchase.sequelize.fn('SUM', Purchase.sequelize.col('quantity')), 'totalQuantity'],
-          [Purchase.sequelize.fn('SUM', Purchase.sequelize.col('weight')), 'totalWeight'],
+          // Derived total weight = SUM(quantity * weight)
+          [Purchase.sequelize.fn('SUM', Purchase.sequelize.literal('quantity * weight')), 'totalWeight'],
           [Purchase.sequelize.fn('SUM', Purchase.sequelize.col('total_cost')), 'totalCost'],
-          [Purchase.sequelize.fn('AVG', Purchase.sequelize.literal('price / weight')), 'avgPricePerKg'],
+          // Average unit price (price)
+          [Purchase.sequelize.fn('AVG', Purchase.sequelize.col('price')), 'avgUnitPrice'],
         ],
-        raw: true,
-      });
-
-      const riceTypeStats = await Purchase.findAll({
-        where: whereClause,
-        attributes: [
-          'rice_type',
-          [Purchase.sequelize.fn('COUNT', Purchase.sequelize.col('id')), 'count'],
-          [Purchase.sequelize.fn('SUM', Purchase.sequelize.col('weight')), 'totalWeight'],
-          [Purchase.sequelize.fn('SUM', Purchase.sequelize.col('total_cost')), 'totalCost'],
-        ],
-        group: ['rice_type'],
-        order: [[Purchase.sequelize.fn('SUM', Purchase.sequelize.col('total_cost')), 'DESC']],
         raw: true,
       });
 
       const supplierStats = await Purchase.findAll({
         where: whereClause,
         attributes: [
-          'supplier_id',
+          'supplierId',
           [Purchase.sequelize.fn('COUNT', Purchase.sequelize.col('Purchase.id')), 'purchaseCount'],
           [Purchase.sequelize.fn('SUM', Purchase.sequelize.col('total_cost')), 'totalAmount'],
         ],
         include: [
           {
             model: Supplier,
-            as: 'supplier',
+            as: 'supplierData',
             attributes: ['name'],
           },
         ],
-        group: ['supplier_id', 'supplier.id', 'supplier.name'],
+        group: ['supplierId', 'supplier.id', 'supplier.name'],
         order: [[Purchase.sequelize.fn('SUM', Purchase.sequelize.col('total_cost')), 'DESC']],
         limit: 10,
       });
@@ -366,18 +327,12 @@ class PurchaseService {
         summary: {
           totalPurchases: parseInt(stats[0].totalPurchases) || 0,
           totalQuantity: parseInt(stats[0].totalQuantity) || 0,
-          totalWeight: parseFloat(stats[0].totalWeight) || 0,
+            totalWeight: parseFloat(stats[0].totalWeight) || 0,
           totalCost: parseFloat(stats[0].totalCost) || 0,
-          avgPricePerKg: parseFloat(stats[0].avgPricePerKg) || 0,
+          avgUnitPrice: parseFloat(stats[0].avgUnitPrice) || 0,
         },
-        riceTypeBreakdown: riceTypeStats.map(item => ({
-          riceType: item.rice_type,
-          count: parseInt(item.count),
-          totalWeight: parseFloat(item.totalWeight),
-          totalCost: parseFloat(item.totalCost),
-        })),
         topSuppliers: supplierStats.map(item => ({
-          supplierId: item.supplier_id,
+          supplierId: item.supplierId,
           supplierName: item.supplier?.name,
           purchaseCount: parseInt(item.purchaseCount),
           totalAmount: parseFloat(item.totalAmount),
@@ -408,24 +363,39 @@ class PurchaseService {
         where: whereClause,
         attributes: [
           'id',
-          'rice_type',
-          'quality',
+          'quantity',
           'weight',
           'price',
-          'purchase_date',
-          'batch_number',
+          'date',
+          'totalCost',
         ],
         include: [
           {
             model: Supplier,
-            as: 'supplier',
+            as: 'supplierData',
             attributes: ['id', 'name'],
           },
+          {
+            model: require('../models/sale'),
+            as: 'sales',
+            attributes: ['id', 'quantity', 'weight'],
+          },
         ],
-        order: [['purchase_date', 'ASC']], // FIFO - First In, First Out
+        order: [['date', 'ASC']], // FIFO
       });
 
-      return inventory;
+      // Augment with remaining weight (totalWeight - soldWeight)
+      return inventory.map(p => {
+        const totalWeight = parseFloat(p.quantity) * parseFloat(p.weight);
+        const soldWeight = (p.sales || []).reduce((acc, s) => acc + (parseFloat(s.quantity) * parseFloat(s.weight)), 0);
+        const remainingWeight = totalWeight - soldWeight;
+        return {
+          ...p.toJSON(),
+          totalWeight,
+          soldWeight,
+          remainingWeight,
+        };
+      });
     } catch (error) {
       console.error('Error getting available inventory:', error);
       throw error;

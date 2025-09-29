@@ -83,9 +83,39 @@ npm run dev
 npm start
 ```
 
-Server akan berjalan di `http://localhost:3000`
+Server akan berjalan di `http://localhost:3000` (atau port yang diset di env). Swagger saat ini dikonfigurasi menunjuk ke `http://localhost:3001` sebagai server dev default; pastikan PORT konsisten.
 
-## 📊 Database Schema
+## � API Documentation (Swagger)
+
+Swagger UI tersedia di:
+
+```
+http://localhost:3001/api-docs
+```
+
+Jika Anda menjalankan API pada port berbeda, perbarui bagian `servers` di `swagger.js` atau set environment variable yang sesuai.
+
+### Konvensi Field (camelCase vs snake_case)
+
+- Format standar respon & permintaan ke depan: **camelCase** (misal: `supplierId`, `totalCost`, `invoiceNumber`).
+- **Backward compatibility**: Input masih menerima snake_case (misal: `supplier_id`, `total_cost`, `invoice_number`).
+- Bila kedua format dikirim bersamaan, nilai camelCase akan diprioritaskan.
+- Beberapa field di respon mungkin masih tampil snake_case karena nama kolom legacy di database; akan dinormalisasi bertahap.
+
+### High-Level Endpoints
+
+| Domain | Contoh Endpoint | Keterangan |
+|--------|-----------------|------------|
+| Health | `GET /health` | Status API & koneksi DB |
+| Suppliers | `GET /api/suppliers` | CRUD, search, stats, toggle status |
+| Purchases | `GET /api/purchases` | CRUD, stats, inventory, trends |
+| Sales | `POST /api/sales` | CRUD, stats, profitability, inventory turnover |
+| Invoices | `POST /api/invoices` | CRUD, stats, trends, aging, overdue, mark as paid, item management |
+| Auth (deferred) | `POST /api/auth/login` | JWT auth akan diaktifkan kembali nanti |
+
+Detail lengkap parameter & schema tersedia di Swagger UI.
+
+## �📊 Database Schema
 
 ### Tabel Suppliers
 | Field | Type | Description |
@@ -99,12 +129,9 @@ Server akan berjalan di `http://localhost:3000`
 | created_at | TIMESTAMP | Waktu dibuat |
 | updated_at | TIMESTAMP | Waktu diperbarui |
 
-## 🔗 API Endpoints
+## 🔗 Contoh API (Suppliers)
 
-### Base URL
-```
-http://localhost:3000
-```
+Base URL default lokal: `http://localhost:3000` (atau sesuai PORT). Documentasi contoh di bawah tetap relevan; gunakan Swagger untuk daftar paling akurat.
 
 ### Health Check
 ```http
@@ -249,15 +276,25 @@ Setiap endpoint menggunakan validasi Joi untuk memastikan data yang masuk sesuai
 - ✅ Request logging
 - ✅ Graceful shutdown
 
+### Testing
+
+Project sudah memiliki smoke test end-to-end dengan Jest & Supertest yang memverifikasi alur penuh (supplier → purchases → sales → analytics → invoices lifecycle).
+
+Jalankan:
+```bash
+npm test
+```
+
 ### Future Enhancements
-- [ ] Authentication & Authorization dengan JWT
+- [ ] Authentication & Authorization dengan JWT (re-enable middleware)
 - [ ] Rate limiting
-- [ ] API documentation dengan Swagger
-- [ ] Unit testing
-- [ ] Logging dengan Winston
+- [x] API documentation dengan Swagger (dasar + analytics & invoice items)
+- [ ] Tambah unit & negative case tests
+- [ ] Structured logging (Winston / Pino)
 - [ ] Docker containerization
 - [ ] Database migrations
 - [ ] Caching dengan Redis
+- [ ] Konsolidasi output field menjadi camelCase seragam
 
 ## 🤝 Contributing
 

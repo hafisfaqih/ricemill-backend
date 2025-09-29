@@ -97,7 +97,7 @@ const Purchase = sequelize.define('Purchase', {
         msg: 'Truck cost must be a decimal number',
       },
       min: {
-        args: 0,
+        args: [0],
         msg: 'Truck cost must be non-negative',
       },
     },
@@ -112,21 +112,21 @@ const Purchase = sequelize.define('Purchase', {
         msg: 'Labor cost must be a decimal number',
       },
       min: {
-        args: 0,
+        args: [0],
         msg: 'Labor cost must be non-negative',
       },
     },
   },
   totalCost: {
     type: DataTypes.DECIMAL(15, 2),
-    allowNull: false,
+    allowNull: true,  // Allow null, will be calculated by beforeSave hook
     field: 'total_cost',
     validate: {
       isDecimal: {
         msg: 'Total cost must be a decimal number',
       },
       min: {
-        args: 0,
+        args: [0],
         msg: 'Total cost must be non-negative',
       },
     },
@@ -148,7 +148,14 @@ const Purchase = sequelize.define('Purchase', {
     },
   ],
   hooks: {
-    beforeSave: (purchase) => {
+    beforeCreate: (purchase) => {
+      // Calculate total cost: (quantity * weight * price) + truckCost + laborCost
+      const productCost = parseFloat(purchase.quantity) * parseFloat(purchase.weight) * parseFloat(purchase.price);
+      const truckCost = parseFloat(purchase.truckCost) || 0;
+      const laborCost = parseFloat(purchase.laborCost) || 0;
+      purchase.totalCost = productCost + truckCost + laborCost;
+    },
+    beforeUpdate: (purchase) => {
       // Calculate total cost: (quantity * weight * price) + truckCost + laborCost
       const productCost = parseFloat(purchase.quantity) * parseFloat(purchase.weight) * parseFloat(purchase.price);
       const truckCost = parseFloat(purchase.truckCost) || 0;
@@ -166,6 +173,18 @@ Purchase.belongsTo(Supplier, {
   onUpdate: 'CASCADE',
 });
 
+// Inverse for Supplier -> Purchase
+if (!Supplier.associations || !Supplier.associations.purchases) {
+  Supplier.hasMany(Purchase, {
+    foreignKey: 'supplierId',
+    as: 'purchases',
+    onDelete: 'SET NULL',
+    onUpdate: 'CASCADE',
+  });
+}
+
+// Purchase -> Sales association is defined in sale.js after Sale model creation to avoid circular require
+
 // Instance methods
 Purchase.prototype.toJSON = function () {
   const values = { ...this.get() };
@@ -177,7 +196,7 @@ Purchase.prototype.toJSON = function () {
   }
   // Convert decimals to numbers for better JSON representation
   ['weight', 'price', 'truckCost', 'laborCost', 'totalCost'].forEach(field => {
-    if (values[field]) {
+    if (values[field] !== null && values[field] !== undefined) {
       values[field] = parseFloat(values[field]);
     }
   });

@@ -8,7 +8,12 @@ class SaleController {
    */
   static async createSale(req, res) {
     try {
-      const sale = await SaleService.createSale(req.body);
+      // Backward compatibility normalization
+      const body = { ...req.body };
+      if (body.purchase_id && !body.purchaseId) body.purchaseId = body.purchase_id;
+      // cost related legacy snake_case (if any)
+      if (body.net_profit && !body.netProfit) body.netProfit = body.net_profit; // Normally computed by hook
+      const sale = await SaleService.createSale(body);
       
       res.status(201).json({
         success: true,
@@ -59,7 +64,15 @@ class SaleController {
    */
   static async getAllSales(req, res) {
     try {
-      const result = await SaleService.getAllSales(req.query);
+      const q = { ...req.query };
+      if (q.purchase_id && !q.purchaseId) q.purchaseId = q.purchase_id;
+      if (q.start_date && !q.startDate) q.startDate = q.start_date;
+      if (q.end_date && !q.endDate) q.endDate = q.end_date;
+      if (q.min_revenue && !q.minRevenue) q.minRevenue = q.min_revenue;
+      if (q.max_revenue && !q.maxRevenue) q.maxRevenue = q.max_revenue;
+      if (q.min_net_profit && !q.minNetProfit) q.minNetProfit = q.min_net_profit;
+      if (q.max_net_profit && !q.maxNetProfit) q.maxNetProfit = q.max_net_profit;
+      const result = await SaleService.getAllSales(q);
       
       res.status(200).json({
         success: true,
@@ -115,7 +128,10 @@ class SaleController {
    */
   static async updateSale(req, res) {
     try {
-      const sale = await SaleService.updateSale(req.params.id, req.body);
+      const body = { ...req.body };
+      if (body.purchase_id && !body.purchaseId) body.purchaseId = body.purchase_id;
+      if (body.net_profit && !body.netProfit) body.netProfit = body.net_profit;
+      const sale = await SaleService.updateSale(req.params.id, body);
       
       res.status(200).json({
         success: true,
@@ -196,9 +212,12 @@ class SaleController {
    */
   static async getSalesByPurchase(req, res) {
     try {
+      const q = { ...req.query };
+      if (q.start_date && !q.startDate) q.startDate = q.start_date;
+      if (q.end_date && !q.endDate) q.endDate = q.end_date;
       const sales = await SaleService.getSalesByPurchase(
         req.params.purchaseId,
-        req.query
+        q
       );
       
       res.status(200).json({
@@ -263,7 +282,10 @@ class SaleController {
    */
   static async getSaleStats(req, res) {
     try {
-      const stats = await SaleService.getSaleStats(req.query);
+      const q = { ...req.query };
+      if (q.start_date && !q.startDate) q.startDate = q.start_date;
+      if (q.end_date && !q.endDate) q.endDate = q.end_date;
+      const stats = await SaleService.getSaleStats(q);
       
       res.status(200).json({
         success: true,

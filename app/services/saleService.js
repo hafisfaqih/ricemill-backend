@@ -2,580 +2,435 @@ const Sale = require('../models/sale');
 const Purchase = require('../models/purchase');
 const Supplier = require('../models/supplier');
 const { Op } = require('sequelize');
+const { sequelize } = require('../../config/db');
 
+/**
+ * SaleService
+ * Clean implementation aligned with current models (camelCase fields, derived revenue)
+ */
 class SaleService {
-  /**
-   * Create a new sale
-   * @param {Object} saleData - Sale data
-   * @returns {Promise<Object>} Created sale
-   */
-  static async createSale(saleData) {
+  // -------- Helper utilities --------
+  static _computeRevenue(row) {
+    return parseFloat(row.quantity) * parseFloat(row.weight) * parseFloat(row.price);
+  }
+
+  static _computeTotalWeight(row) {
+    return parseFloat(row.quantity) * parseFloat(row.weight);
+  }
+
+  static async _getSoldWeightForPurchase(purchaseId, excludeSaleId = null) {
+    if (!purchaseId) return 0;
+    const where = { purchaseId };
+    if (excludeSaleId) where.id = { [Op.ne]: excludeSaleId };
+
+    // Aggregate quantity * weight
+    const result = await Sale.findAll({
+      where,
+      attributes: [
+        [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.literal('quantity * weight')), 0), 'soldWeight'],
+      ],
+      raw: true,
+    });
+    return parseFloat(result[0].soldWeight) || 0;
+  }
+
+  static _serializeSale(row) {
+    if (!row) return row;
+    const sale = row.toJSON ? row.toJSON() : row;
+    sale.revenue = this._computeRevenue(sale);
+    sale.totalWeight = this._computeTotalWeight(sale);
+    return sale;
+  }
+
+  // -------- CRUD --------
+  static async createSale(data) {
     try {
-      // Verify purchase exists
-      const purchase = await Purchase.findByPk(saleData.purchase_id, {
-        include: [{ model: Supplier, as: 'supplier' }],
-      });
-      
-      if (!purchase) {
-        throw new Error('Purchase not found');
+      const { purchaseId, quantity, weight } = data;
+
+      if (purchaseId) {
+        const purchase = await Purchase.findByPk(purchaseId, { include: [{ model: Supplier, as: 'supplierData' }] });
+        if (!purchase) throw new Error('Purchase not found');
+
+        const purchaseTotalWeight = parseFloat(purchase.quantity) * parseFloat(purchase.weight);
+        const existingSoldWeight = await this._getSoldWeightForPurchase(purchaseId);
+        const newSoldWeight = parseFloat(quantity) * parseFloat(weight);
+        const available = purchaseTotalWeight - existingSoldWeight;
+        if (newSoldWeight > available) {
+          throw new Error(`Insufficient inventory. Available: ${available.toFixed(2)}kg, Requested: ${newSoldWeight.toFixed(2)}kg`);
+        }
       }
 
-      // Check if there's enough inventory
-      const existingSales = await Sale.sum('weight', {
-        where: { purchase_id: saleData.purchase_id },
-      });
-      
-      const availableWeight = purchase.weight - (existingSales || 0);
-      
-      if (saleData.weight > availableWeight) {
-        throw new Error(`Insufficient inventory. Available: ${availableWeight}kg, Requested: ${saleData.weight}kg`);
-      }
-
-      const sale = await Sale.create(saleData);
-      
-      return await Sale.findByPk(sale.id, {
+      const sale = await Sale.create(data);
+      const created = await Sale.findByPk(sale.id, {
         include: [
           {
             model: Purchase,
-            as: 'purchase',
-            include: [
-              {
-                model: Supplier,
-                as: 'supplier',
-                attributes: ['id', 'name'],
-              },
-            ],
+            as: 'purchaseData',
+            include: [{ model: Supplier, as: 'supplierData', attributes: ['id', 'name'] }],
           },
         ],
       });
-    } catch (error) {
-      console.error('Error creating sale:', error);
-      throw error;
+      return this._serializeSale(created);
+    } catch (err) {
+      console.error('Error creating sale:', err);
+      throw err;
     }
   }
 
-  /**
-   * Get all sales with pagination and filtering
-   * @param {Object} options - Query options
-   * @returns {Promise<Object>} Sales with pagination
-   */
   static async getAllSales(options = {}) {
     try {
       const {
         page = 1,
         limit = 10,
-        sortBy = 'createdAt',
+        sortBy = 'date',
         sortOrder = 'DESC',
-        purchase_id,
-        customer_name,
+        purchaseId,
         startDate,
         endDate,
-        minAmount,
-        maxAmount,
-        riceType,
+        minRevenue,
+        maxRevenue,
+        minNetProfit,
+        maxNetProfit,
       } = options;
 
-      const offset = (page - 1) * limit;
-      const whereClause = {};
-      const purchaseWhere = {};
-
-      // Filter by purchase
-      if (purchase_id) {
-        whereClause.purchase_id = purchase_id;
-      }
-
-      // Filter by customer name
-      if (customer_name) {
-        whereClause.customer_name = { [Op.iLike]: `%${customer_name}%` };
-      }
-
-      // Filter by date range
+      const where = {};
+      if (purchaseId) where.purchaseId = purchaseId;
       if (startDate || endDate) {
-        whereClause.sale_date = {};
-        if (startDate) {
-          whereClause.sale_date[Op.gte] = new Date(startDate);
-        }
-        if (endDate) {
-          whereClause.sale_date[Op.lte] = new Date(endDate);
-        }
+        where.date = {};
+        if (startDate) where.date[Op.gte] = new Date(startDate);
+        if (endDate) where.date[Op.lte] = new Date(endDate);
       }
 
-      // Filter by amount range
-      if (minAmount || maxAmount) {
-        whereClause.revenue = {};
-        if (minAmount) {
-          whereClause.revenue[Op.gte] = parseFloat(minAmount);
-        }
-        if (maxAmount) {
-          whereClause.revenue[Op.lte] = parseFloat(maxAmount);
-        }
-      }
-
-      // Filter by rice type (through purchase)
-      if (riceType) {
-        purchaseWhere.rice_type = { [Op.iLike]: `%${riceType}%` };
-      }
-
+      const offset = (page - 1) * limit;
       const { count, rows } = await Sale.findAndCountAll({
-        where: whereClause,
+        where,
         include: [
           {
             model: Purchase,
-            as: 'purchase',
-            where: Object.keys(purchaseWhere).length > 0 ? purchaseWhere : undefined,
-            include: [
-              {
-                model: Supplier,
-                as: 'supplier',
-                attributes: ['id', 'name'],
-              },
-            ],
+            as: 'purchaseData',
+            include: [{ model: Supplier, as: 'supplierData', attributes: ['id', 'name'] }],
           },
         ],
         order: [[sortBy, sortOrder.toUpperCase()]],
         limit: parseInt(limit),
-        offset: offset,
+        offset,
+      });
+
+      // Derived filtering (revenue / netProfit) post query (simple approach)
+      let sales = rows.map(r => this._serializeSale(r));
+      sales = sales.filter(s => {
+        if (minRevenue && s.revenue < parseFloat(minRevenue)) return false;
+        if (maxRevenue && s.revenue > parseFloat(maxRevenue)) return false;
+        if (minNetProfit && parseFloat(s.netProfit || 0) < parseFloat(minNetProfit)) return false;
+        if (maxNetProfit && parseFloat(s.netProfit || 0) > parseFloat(maxNetProfit)) return false;
+        return true;
       });
 
       return {
-        sales: rows,
+        sales,
         pagination: {
           currentPage: parseInt(page),
-          totalPages: Math.ceil(count / limit),
-          totalItems: count,
-          itemsPerPage: parseInt(limit),
+            totalPages: Math.ceil(count / limit),
+            // Note: totalItems reflects DB count before derived revenue filtering
+            totalItems: count,
+            itemsPerPage: parseInt(limit),
         },
       };
-    } catch (error) {
-      console.error('Error getting sales:', error);
-      throw error;
+    } catch (err) {
+      console.error('Error getting sales:', err);
+      throw err;
     }
   }
 
-  /**
-   * Get sale by ID
-   * @param {number} id - Sale ID
-   * @returns {Promise<Object>} Sale details
-   */
   static async getSaleById(id) {
     try {
       const sale = await Sale.findByPk(id, {
         include: [
           {
             model: Purchase,
-            as: 'purchase',
-            include: [
-              {
-                model: Supplier,
-                as: 'supplier',
-                attributes: ['id', 'name', 'contact_person'],
-              },
-            ],
+            as: 'purchaseData',
+            include: [{ model: Supplier, as: 'supplierData', attributes: ['id', 'name'] }],
           },
         ],
       });
-
-      if (!sale) {
-        throw new Error('Sale not found');
-      }
-
-      return sale;
-    } catch (error) {
-      console.error('Error getting sale by ID:', error);
-      throw error;
+      if (!sale) throw new Error('Sale not found');
+      return this._serializeSale(sale);
+    } catch (err) {
+      console.error('Error getting sale by ID:', err);
+      throw err;
     }
   }
 
-  /**
-   * Update sale
-   * @param {number} id - Sale ID
-   * @param {Object} updateData - Update data
-   * @returns {Promise<Object>} Updated sale
-   */
   static async updateSale(id, updateData) {
     try {
       const sale = await Sale.findByPk(id);
-      if (!sale) {
-        throw new Error('Sale not found');
-      }
+      if (!sale) throw new Error('Sale not found');
 
-      // If purchase_id or weight is being updated, verify inventory
-      if (updateData.purchase_id || updateData.weight) {
-        const purchaseId = updateData.purchase_id || sale.purchase_id;
-        const newWeight = updateData.weight || sale.weight;
+      const effectivePurchaseId = updateData.purchaseId || sale.purchaseId;
+      const newQuantity = updateData.quantity || sale.quantity;
+      const newWeightUnit = updateData.weight || sale.weight;
 
-        const purchase = await Purchase.findByPk(purchaseId);
-        if (!purchase) {
-          throw new Error('Purchase not found');
-        }
+      if (effectivePurchaseId) {
+        const purchase = await Purchase.findByPk(effectivePurchaseId);
+        if (!purchase) throw new Error('Purchase not found');
 
-        // Calculate available inventory excluding current sale
-        const existingSales = await Sale.sum('weight', {
-          where: {
-            purchase_id: purchaseId,
-            id: { [Op.ne]: id }, // Exclude current sale
-          },
-        });
-
-        const availableWeight = purchase.weight - (existingSales || 0);
-
-        if (newWeight > availableWeight) {
-          throw new Error(`Insufficient inventory. Available: ${availableWeight}kg, Requested: ${newWeight}kg`);
+        const purchaseTotalWeight = parseFloat(purchase.quantity) * parseFloat(purchase.weight);
+        const existingSoldWeight = await this._getSoldWeightForPurchase(effectivePurchaseId, id);
+        const newSoldWeight = parseFloat(newQuantity) * parseFloat(newWeightUnit);
+        const available = purchaseTotalWeight - existingSoldWeight;
+        if (newSoldWeight > available) {
+          throw new Error(`Insufficient inventory. Available: ${available.toFixed(2)}kg, Requested: ${newSoldWeight.toFixed(2)}kg`);
         }
       }
 
       await sale.update(updateData);
 
-      return await Sale.findByPk(id, {
+      const updated = await Sale.findByPk(id, {
         include: [
           {
             model: Purchase,
-            as: 'purchase',
-            include: [
-              {
-                model: Supplier,
-                as: 'supplier',
-                attributes: ['id', 'name'],
-              },
-            ],
+            as: 'purchaseData',
+            include: [{ model: Supplier, as: 'supplierData', attributes: ['id', 'name'] }],
           },
         ],
       });
-    } catch (error) {
-      console.error('Error updating sale:', error);
-      throw error;
+      return this._serializeSale(updated);
+    } catch (err) {
+      console.error('Error updating sale:', err);
+      throw err;
     }
   }
 
-  /**
-   * Delete sale
-   * @param {number} id - Sale ID
-   * @returns {Promise<void>}
-   */
   static async deleteSale(id) {
     try {
       const sale = await Sale.findByPk(id);
-      if (!sale) {
-        throw new Error('Sale not found');
-      }
-
+      if (!sale) throw new Error('Sale not found');
       await sale.destroy();
-    } catch (error) {
-      console.error('Error deleting sale:', error);
-      throw error;
+    } catch (err) {
+      console.error('Error deleting sale:', err);
+      throw err;
     }
   }
 
-  /**
-   * Get sales by purchase
-   * @param {number} purchaseId - Purchase ID
-   * @param {Object} options - Query options
-   * @returns {Promise<Array>} Purchase sales
-   */
   static async getSalesByPurchase(purchaseId, options = {}) {
     try {
       const { limit = 10, sortOrder = 'DESC' } = options;
-
       const purchase = await Purchase.findByPk(purchaseId);
-      if (!purchase) {
-        throw new Error('Purchase not found');
-      }
+      if (!purchase) throw new Error('Purchase not found');
 
       const sales = await Sale.findAll({
-        where: { purchase_id: purchaseId },
+        where: { purchaseId },
         include: [
           {
             model: Purchase,
-            as: 'purchase',
-            attributes: ['id', 'rice_type', 'quality'],
+            as: 'purchaseData',
+            include: [{ model: Supplier, as: 'supplierData', attributes: ['id', 'name'] }],
           },
         ],
-        order: [['sale_date', sortOrder.toUpperCase()]],
+        order: [['date', sortOrder.toUpperCase()]],
         limit: parseInt(limit),
       });
-
-      return sales;
-    } catch (error) {
-      console.error('Error getting sales by purchase:', error);
-      throw error;
+      return sales.map(r => this._serializeSale(r));
+    } catch (err) {
+      console.error('Error getting sales by purchase:', err);
+      throw err;
     }
   }
 
-  /**
-   * Search sales
-   * @param {string} searchTerm - Search term
-   * @returns {Promise<Array>} Search results
-   */
   static async searchSales(searchTerm) {
     try {
       const sales = await Sale.findAll({
         where: {
           [Op.or]: [
-            { customer_name: { [Op.iLike]: `%${searchTerm}%` } },
-            { customer_phone: { [Op.iLike]: `%${searchTerm}%` } },
-            { customer_address: { [Op.iLike]: `%${searchTerm}%` } },
+            { '$purchaseData.supplierData.name$': { [Op.iLike]: `%${searchTerm}%` } },
+            { '$purchaseData.supplier$': { [Op.iLike]: `%${searchTerm}%` } },
           ],
         },
         include: [
           {
             model: Purchase,
-            as: 'purchase',
-            attributes: ['id', 'rice_type', 'quality'],
-            include: [
-              {
-                model: Supplier,
-                as: 'supplier',
-                attributes: ['id', 'name'],
-              },
-            ],
+            as: 'purchaseData',
+            include: [{ model: Supplier, as: 'supplierData', attributes: ['id', 'name'] }],
           },
         ],
-        order: [['sale_date', 'DESC']],
-        limit: 20,
+        order: [['date', 'DESC']],
+        limit: 50,
       });
-
-      return sales;
-    } catch (error) {
-      console.error('Error searching sales:', error);
-      throw error;
+      return sales.map(r => this._serializeSale(r));
+    } catch (err) {
+      console.error('Error searching sales:', err);
+      throw err;
     }
   }
 
-  /**
-   * Get sale statistics
-   * @param {Object} options - Filter options
-   * @returns {Promise<Object>} Sale statistics
-   */
   static async getSaleStats(options = {}) {
     try {
-      const { startDate, endDate, purchase_id } = options;
-      const whereClause = {};
-
-      // Filter by date range
+      const { startDate, endDate, purchaseId } = options;
+      const where = {};
+      if (purchaseId) where.purchaseId = purchaseId;
       if (startDate || endDate) {
-        whereClause.sale_date = {};
-        if (startDate) {
-          whereClause.sale_date[Op.gte] = new Date(startDate);
-        }
-        if (endDate) {
-          whereClause.sale_date[Op.lte] = new Date(endDate);
-        }
+        where.date = {};
+        if (startDate) where.date[Op.gte] = new Date(startDate);
+        if (endDate) where.date[Op.lte] = new Date(endDate);
       }
 
-      // Filter by purchase
-      if (purchase_id) {
-        whereClause.purchase_id = purchase_id;
-      }
-
-      const stats = await Sale.findAll({
-        where: whereClause,
+      const aggregate = await Sale.findAll({
+        where,
         attributes: [
-          [Sale.sequelize.fn('COUNT', Sale.sequelize.col('id')), 'totalSales'],
-          [Sale.sequelize.fn('SUM', Sale.sequelize.col('weight')), 'totalWeight'],
-          [Sale.sequelize.fn('SUM', Sale.sequelize.col('revenue')), 'totalRevenue'],
-          [Sale.sequelize.fn('SUM', Sale.sequelize.col('net_profit')), 'totalProfit'],
-          [Sale.sequelize.fn('AVG', Sale.sequelize.literal('price / weight')), 'avgPricePerKg'],
-          [Sale.sequelize.fn('AVG', Sale.sequelize.col('rendement')), 'avgRendement'],
+          [sequelize.fn('COUNT', sequelize.col('id')), 'totalSales'],
+          [sequelize.fn('SUM', sequelize.literal('quantity * weight')), 'totalWeight'],
+          [sequelize.fn('SUM', sequelize.literal('quantity * weight * price')), 'totalRevenue'],
+          [sequelize.fn('SUM', sequelize.col('net_profit')), 'totalProfit'],
+          [sequelize.fn('AVG', sequelize.col('price')), 'avgUnitPrice'],
         ],
         raw: true,
       });
 
-      const customerStats = await Sale.findAll({
-        where: whereClause,
-        attributes: [
-          'customer_name',
-          [Sale.sequelize.fn('COUNT', Sale.sequelize.col('id')), 'salesCount'],
-          [Sale.sequelize.fn('SUM', Sale.sequelize.col('revenue')), 'totalRevenue'],
-          [Sale.sequelize.fn('SUM', Sale.sequelize.col('weight')), 'totalWeight'],
-        ],
-        group: ['customer_name'],
-        order: [[Sale.sequelize.fn('SUM', Sale.sequelize.col('revenue')), 'DESC']],
-        limit: 10,
-        raw: true,
-      });
-
-      const riceTypeStats = await Sale.findAll({
-        where: whereClause,
-        attributes: [
-          [Sale.sequelize.col('purchase.rice_type'), 'riceType'],
-          [Sale.sequelize.fn('COUNT', Sale.sequelize.col('Sale.id')), 'salesCount'],
-          [Sale.sequelize.fn('SUM', Sale.sequelize.col('weight')), 'totalWeight'],
-          [Sale.sequelize.fn('SUM', Sale.sequelize.col('revenue')), 'totalRevenue'],
-          [Sale.sequelize.fn('SUM', Sale.sequelize.col('net_profit')), 'totalProfit'],
-        ],
-        include: [
-          {
-            model: Purchase,
-            as: 'purchase',
-            attributes: [],
-          },
-        ],
-        group: ['purchase.rice_type'],
-        order: [[Sale.sequelize.fn('SUM', Sale.sequelize.col('revenue')), 'DESC']],
-        raw: true,
-      });
+      const agg = aggregate[0] || {};
+      const rendementRows = await Sale.findAll({ where, attributes: ['rendement'], raw: true });
+      const rendementValues = rendementRows
+        .map(r => (r.rendement ? parseFloat(String(r.rendement).replace('%', '')) : null))
+        .filter(v => v !== null);
+      const avgRendement = rendementValues.length
+        ? (rendementValues.reduce((a, b) => a + b, 0) / rendementValues.length).toFixed(2)
+        : '0.00';
 
       return {
         summary: {
-          totalSales: parseInt(stats[0].totalSales) || 0,
-          totalWeight: parseFloat(stats[0].totalWeight) || 0,
-          totalRevenue: parseFloat(stats[0].totalRevenue) || 0,
-          totalProfit: parseFloat(stats[0].totalProfit) || 0,
-          avgPricePerKg: parseFloat(stats[0].avgPricePerKg) || 0,
-          avgRendement: parseFloat(stats[0].avgRendement) || 0,
+          totalSales: parseInt(agg.totalSales) || 0,
+          totalWeight: parseFloat(agg.totalWeight) || 0,
+          totalRevenue: parseFloat(agg.totalRevenue) || 0,
+          totalProfit: parseFloat(agg.totalProfit) || 0,
+          avgUnitPrice: parseFloat(agg.avgUnitPrice) || 0,
+          avgRendement: parseFloat(avgRendement),
+          profitMargin: agg.totalRevenue && parseFloat(agg.totalRevenue) > 0
+            ? ((parseFloat(agg.totalProfit || 0) / parseFloat(agg.totalRevenue)) * 100).toFixed(2)
+            : '0.00',
         },
-        topCustomers: customerStats.map(item => ({
-          customerName: item.customer_name,
-          salesCount: parseInt(item.salesCount),
-          totalRevenue: parseFloat(item.totalRevenue),
-          totalWeight: parseFloat(item.totalWeight),
-        })),
-        riceTypePerformance: riceTypeStats.map(item => ({
-          riceType: item.riceType,
-          salesCount: parseInt(item.salesCount),
-          totalWeight: parseFloat(item.totalWeight),
-          totalRevenue: parseFloat(item.totalRevenue),
-          totalProfit: parseFloat(item.totalProfit),
-          profitMargin: item.totalRevenue ? ((item.totalProfit / item.totalRevenue) * 100).toFixed(2) : 0,
-        })),
       };
-    } catch (error) {
-      console.error('Error getting sale statistics:', error);
-      throw error;
+    } catch (err) {
+      console.error('Error getting sale statistics:', err);
+      throw err;
     }
   }
 
-  /**
-   * Get profitability analysis
-   * @param {Object} options - Filter options
-   * @returns {Promise<Object>} Profitability analysis
-   */
   static async getProfitabilityAnalysis(options = {}) {
     try {
       const { startDate, endDate, groupBy = 'month' } = options;
-      const whereClause = {};
-
-      // Filter by date range
+      const where = {};
       if (startDate || endDate) {
-        whereClause.sale_date = {};
-        if (startDate) {
-          whereClause.sale_date[Op.gte] = new Date(startDate);
-        }
-        if (endDate) {
-          whereClause.sale_date[Op.lte] = new Date(endDate);
-        }
+        where.date = {};
+        if (startDate) where.date[Op.gte] = new Date(startDate);
+        if (endDate) where.date[Op.lte] = new Date(endDate);
       }
 
-      let dateGroup;
+      let dateExpr;
       switch (groupBy) {
         case 'day':
-          dateGroup = Sale.sequelize.fn('DATE', Sale.sequelize.col('sale_date'));
+          dateExpr = sequelize.fn('DATE', sequelize.col('date'));
           break;
         case 'week':
-          dateGroup = Sale.sequelize.fn('DATE_TRUNC', 'week', Sale.sequelize.col('sale_date'));
+          dateExpr = sequelize.fn('DATE_TRUNC', 'week', sequelize.col('date'));
           break;
         case 'month':
         default:
-          dateGroup = Sale.sequelize.fn('DATE_TRUNC', 'month', Sale.sequelize.col('sale_date'));
+          dateExpr = sequelize.fn('DATE_TRUNC', 'month', sequelize.col('date'));
           break;
       }
 
-      const profitTrends = await Sale.findAll({
-        where: whereClause,
+      const rows = await Sale.findAll({
+        where,
         attributes: [
-          [dateGroup, 'period'],
-          [Sale.sequelize.fn('COUNT', Sale.sequelize.col('id')), 'salesCount'],
-          [Sale.sequelize.fn('SUM', Sale.sequelize.col('weight')), 'totalWeight'],
-          [Sale.sequelize.fn('SUM', Sale.sequelize.col('revenue')), 'totalRevenue'],
-          [Sale.sequelize.fn('SUM', Sale.sequelize.col('net_profit')), 'totalProfit'],
+          [dateExpr, 'period'],
+          [sequelize.fn('COUNT', sequelize.col('id')), 'salesCount'],
+          [sequelize.fn('SUM', sequelize.literal('quantity * weight')), 'totalWeight'],
+          [sequelize.fn('SUM', sequelize.literal('quantity * weight * price')), 'totalRevenue'],
+          [sequelize.fn('SUM', sequelize.col('net_profit')), 'totalProfit'],
         ],
-        group: [dateGroup],
-        order: [dateGroup],
+        group: [dateExpr],
+        order: [[dateExpr, 'ASC']],
         raw: true,
       });
 
-      const formattedTrends = profitTrends.map(item => ({
-        period: item.period,
-        salesCount: parseInt(item.salesCount),
-        totalWeight: parseFloat(item.totalWeight),
-        totalRevenue: parseFloat(item.totalRevenue),
-        totalProfit: parseFloat(item.totalProfit),
-        profitMargin: item.totalRevenue ? ((item.totalProfit / item.totalRevenue) * 100).toFixed(2) : 0,
+      const trends = rows.map(r => ({
+        period: r.period,
+        salesCount: parseInt(r.salesCount) || 0,
+        totalWeight: parseFloat(r.totalWeight) || 0,
+        totalRevenue: parseFloat(r.totalRevenue) || 0,
+        totalProfit: parseFloat(r.totalProfit) || 0,
+        profitMargin: r.totalRevenue && parseFloat(r.totalRevenue) > 0
+          ? ((parseFloat(r.totalProfit || 0) / parseFloat(r.totalRevenue)) * 100).toFixed(2)
+          : '0.00',
       }));
 
+      const totalRevenue = trends.reduce((s, t) => s + t.totalRevenue, 0);
+      const totalProfit = trends.reduce((s, t) => s + t.totalProfit, 0);
+      const avgMargin = trends.length
+        ? (trends.reduce((s, t) => s + parseFloat(t.profitMargin), 0) / trends.length).toFixed(2)
+        : '0.00';
+
       return {
-        trends: formattedTrends,
+        trends,
         summary: {
-          totalPeriods: formattedTrends.length,
-          totalRevenue: formattedTrends.reduce((sum, item) => sum + item.totalRevenue, 0),
-          totalProfit: formattedTrends.reduce((sum, item) => sum + item.totalProfit, 0),
-          averageProfitMargin: formattedTrends.length > 0 
-            ? (formattedTrends.reduce((sum, item) => sum + parseFloat(item.profitMargin), 0) / formattedTrends.length).toFixed(2)
-            : 0,
+          totalPeriods: trends.length,
+          totalRevenue,
+          totalProfit,
+          averageProfitMargin: avgMargin,
         },
       };
-    } catch (error) {
-      console.error('Error getting profitability analysis:', error);
-      throw error;
+    } catch (err) {
+      console.error('Error getting profitability analysis:', err);
+      throw err;
     }
   }
 
-  /**
-   * Get inventory turnover analysis
-   * @returns {Promise<Array>} Inventory turnover data
-   */
   static async getInventoryTurnover() {
     try {
-      const turnoverData = await Purchase.findAll({
+      const rows = await Purchase.findAll({
         attributes: [
-          'id',
-          'rice_type',
-          'quality',
-          'weight',
-          'purchase_date',
-          [Purchase.sequelize.fn('SUM', Purchase.sequelize.col('sales.weight')), 'soldWeight'],
-          [Purchase.sequelize.fn('COUNT', Purchase.sequelize.col('sales.id')), 'salesCount'],
+          'id', 'date', 'quantity', 'weight',
+          // Disambiguate columns by qualifying with table alias to avoid Postgres 42702 (ambiguous column)
+          [sequelize.literal('"Purchase"."quantity" * "Purchase"."weight"'), 'totalWeight'],
+          [
+            sequelize.fn(
+              'COALESCE',
+              sequelize.fn('SUM', sequelize.literal('"sales"."quantity" * "sales"."weight"')),
+              0
+            ),
+            'soldWeight'
+          ],
+          [sequelize.fn('COUNT', sequelize.col('sales.id')), 'salesCount'],
         ],
         include: [
-          {
-            model: Sale,
-            as: 'sales',
-            attributes: [],
-          },
-          {
-            model: Supplier,
-            as: 'supplier',
-            attributes: ['name'],
-          },
+          { model: Sale, as: 'sales', attributes: [] },
+          { model: Supplier, as: 'supplierData', attributes: ['id', 'name'] },
         ],
-        group: ['Purchase.id', 'supplier.id'],
+        group: ['Purchase.id', 'supplierData.id'],
         raw: true,
       });
 
-      return turnoverData.map(item => {
-        const soldWeight = parseFloat(item.soldWeight) || 0;
-        const totalWeight = parseFloat(item.weight);
+      const now = new Date();
+      return rows.map(r => {
+        const totalWeight = parseFloat(r.totalWeight) || 0;
+        const soldWeight = parseFloat(r.soldWeight) || 0;
         const remainingWeight = totalWeight - soldWeight;
-        const turnoverRate = totalWeight > 0 ? ((soldWeight / totalWeight) * 100).toFixed(2) : 0;
-        const daysInStock = Math.floor((new Date() - new Date(item.purchase_date)) / (1000 * 60 * 60 * 24));
-
+        const turnoverRate = totalWeight > 0 ? ((soldWeight / totalWeight) * 100).toFixed(2) : '0.00';
+        const daysInStock = Math.floor((now - new Date(r.date)) / (1000 * 60 * 60 * 24));
         return {
-          purchaseId: item.id,
-          riceType: item.rice_type,
-          quality: item.quality,
-          supplierName: item['supplier.name'],
+          purchaseId: r.id,
+            supplierName: r['supplierData.name'],
           totalWeight,
           soldWeight,
           remainingWeight,
           turnoverRate: parseFloat(turnoverRate),
-          salesCount: parseInt(item.salesCount) || 0,
+          salesCount: parseInt(r.salesCount) || 0,
           daysInStock,
-          purchaseDate: item.purchase_date,
+          purchaseDate: r.date,
         };
       });
-    } catch (error) {
-      console.error('Error getting inventory turnover:', error);
-      throw error;
+    } catch (err) {
+      console.error('Error getting inventory turnover:', err);
+      throw err;
     }
   }
 }

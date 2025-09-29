@@ -70,6 +70,9 @@ const Supplier = sequelize.define('Supplier', {
   ],
 });
 
+// Associations (inverse) added in separate require sequence to avoid circular issues
+// Will be completed after Purchase model definition loads; see purchase.js for belongsTo side.
+
 // Instance methods
 Supplier.prototype.toJSON = function () {
   const values = { ...this.get() };

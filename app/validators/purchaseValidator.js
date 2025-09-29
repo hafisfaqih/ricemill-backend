@@ -244,23 +244,24 @@ const purchaseSchemas = {
         'number.positive': 'Supplier ID must be positive',
       }),
     
-    minAmount: Joi.number()
+    // Use canonical camelCase names; legacy minAmount/maxAmount mapped in middleware
+    minTotalCost: Joi.number()
       .precision(2)
       .min(0)
       .optional()
       .messages({
-        'number.base': 'Minimum amount must be a number',
-        'number.min': 'Minimum amount must be non-negative',
+        'number.base': 'Minimum total cost must be a number',
+        'number.min': 'Minimum total cost must be non-negative',
       }),
     
-    maxAmount: Joi.number()
+    maxTotalCost: Joi.number()
       .precision(2)
       .min(0)
       .optional()
-      .min(Joi.ref('minAmount'))
+      .min(Joi.ref('minTotalCost'))
       .messages({
-        'number.base': 'Maximum amount must be a number',
-        'number.min': 'Maximum amount must be greater than minimum amount',
+        'number.base': 'Maximum total cost must be a number',
+        'number.min': 'Maximum total cost must be greater than minimum total cost',
       }),
   }),
 
@@ -300,6 +301,27 @@ const validatePurchase = (schema) => {
           success: false,
           message: 'Invalid validation schema',
         });
+    }
+
+    // Backward compatibility mapping BEFORE validation (body & query)
+    if (schema === 'create' || schema === 'update') {
+      // Accept legacy snake_case
+      if (dataToValidate && dataToValidate.supplier_id && !dataToValidate.supplierId) {
+        dataToValidate.supplierId = dataToValidate.supplier_id;
+      }
+      if (dataToValidate && dataToValidate.truck_cost && !dataToValidate.truckCost) {
+        dataToValidate.truckCost = dataToValidate.truck_cost;
+      }
+      if (dataToValidate && dataToValidate.labor_cost && !dataToValidate.laborCost) {
+        dataToValidate.laborCost = dataToValidate.labor_cost;
+      }
+    } else if (schema === 'query') {
+      if (dataToValidate.supplier_id && !dataToValidate.supplierId) dataToValidate.supplierId = dataToValidate.supplier_id;
+      // Legacy amount filters -> new total cost filters
+      if (dataToValidate.minAmount && !dataToValidate.minTotalCost) dataToValidate.minTotalCost = dataToValidate.minAmount;
+      if (dataToValidate.maxAmount && !dataToValidate.maxTotalCost) dataToValidate.maxTotalCost = dataToValidate.maxAmount;
+      if (dataToValidate.start_date && !dataToValidate.startDate) dataToValidate.startDate = dataToValidate.start_date;
+      if (dataToValidate.end_date && !dataToValidate.endDate) dataToValidate.endDate = dataToValidate.end_date;
     }
 
     const { error, value } = purchaseSchemas[schema].validate(dataToValidate, {

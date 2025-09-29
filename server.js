@@ -177,8 +177,8 @@ app.use((error, req, res, next) => {
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || 'localhost';
 
-// Start server function
-const startServer = async () => {
+// Start server function (returns the http server instance)
+const startServer = async (opts = {}) => {
   try {
     // Test database connection
     console.log('🔗 Testing database connection...');
@@ -189,10 +189,10 @@ const startServer = async () => {
     await syncDatabase();
     
     // Start the server
-    const PORT = config.server.port;
-    const HOST = config.server.host;
+    const PORT = opts.port != null ? opts.port : config.server.port;
+    const HOST = opts.host || config.server.host;
     
-    app.listen(PORT, HOST, () => {
+    const srv = app.listen(PORT, HOST, () => {
       console.log('🌾 Rice Mill Management API Started Successfully!');
       console.log(`🚀 Server running on: ${config.getBaseUrl()}`);
       console.log(`📋 API Documentation: ${config.getBaseUrl()}/api-docs`);
@@ -206,17 +206,18 @@ const startServer = async () => {
       console.log(`   - Invoices: ${config.getApiBaseUrl()}/invoices`);
       console.log(`   - Users: ${config.getApiBaseUrl()}/users`);
       console.log('✅ Ready to accept connections!');
-    });
+  });
+  return srv;
   } catch (error) {
     if (error.name === 'SequelizeConnectionRefusedError') {
       console.error('❌ Database connection failed - starting server without DB');
       console.error('⚠️  Some endpoints may not work until database is available\n');
       
-      const PORT = config.server.port;
-      const HOST = config.server.host;
+  const PORT = opts.port != null ? opts.port : config.server.port;
+  const HOST = opts.host || config.server.host;
       
       // Start server anyway in development mode
-      app.listen(PORT, HOST, () => {
+      const srv = app.listen(PORT, HOST, () => {
         console.log('🚀 =================================');
         console.log(`🚀 Server running on ${config.getBaseUrl()}`);
         console.log(`🚀 Environment: ${config.server.nodeEnv}`);
@@ -225,13 +226,21 @@ const startServer = async () => {
         console.log('📚 Available Endpoints:');
         console.log(`🔗 Health Check: ${config.getBaseUrl()}/health`);
         console.log('🚀 =================================');
-      });
+  });
+  return srv;
     } else {
       console.error('❌ Failed to start server:', error.message);
       process.exit(1);
     }
   }
-};;
+};
+
+// Only auto-start if this file is run directly and not under test
+if (require.main === module && process.env.NODE_ENV !== 'test') {
+  startServer();
+}
+
+module.exports = { app, startServer };
 
 // Handle graceful shutdown
 process.on('SIGTERM', () => {
@@ -257,6 +266,6 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 // Start the server
-startServer();
+// (Removed direct call; guarded above)
 
-module.exports = app;
+// (Single export object defined above)

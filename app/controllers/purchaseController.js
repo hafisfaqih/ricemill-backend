@@ -8,7 +8,13 @@ class PurchaseController {
    */
   static async createPurchase(req, res) {
     try {
-      const purchase = await PurchaseService.createPurchase(req.body);
+      // Backward compatibility: normalize snake_case -> camelCase
+      const body = { ...req.body };
+      if (body.supplier_id && !body.supplierId) body.supplierId = body.supplier_id;
+      if (body.truck_cost && !body.truckCost) body.truckCost = body.truck_cost;
+      if (body.labor_cost && !body.laborCost) body.laborCost = body.labor_cost;
+      if (body.total_cost && !body.totalCost) body.totalCost = body.total_cost; // usually recalculated by hooks
+      const purchase = await PurchaseService.createPurchase(body);
       
       res.status(201).json({
         success: true,
@@ -59,7 +65,14 @@ class PurchaseController {
    */
   static async getAllPurchases(req, res) {
     try {
-      const result = await PurchaseService.getAllPurchases(req.query);
+      // Normalize query params
+      const q = { ...req.query };
+      if (q.supplier_id && !q.supplierId) q.supplierId = q.supplier_id;
+      if (q.start_date && !q.startDate) q.startDate = q.start_date;
+      if (q.end_date && !q.endDate) q.endDate = q.end_date;
+      if (q.min_total_cost && !q.minTotalCost) q.minTotalCost = q.min_total_cost;
+      if (q.max_total_cost && !q.maxTotalCost) q.maxTotalCost = q.max_total_cost;
+      const result = await PurchaseService.getAllPurchases(q);
       
       res.status(200).json({
         success: true,
@@ -115,7 +128,12 @@ class PurchaseController {
    */
   static async updatePurchase(req, res) {
     try {
-      const purchase = await PurchaseService.updatePurchase(req.params.id, req.body);
+      const body = { ...req.body };
+      if (body.supplier_id && !body.supplierId) body.supplierId = body.supplier_id;
+      if (body.truck_cost && !body.truckCost) body.truckCost = body.truck_cost;
+      if (body.labor_cost && !body.laborCost) body.laborCost = body.labor_cost;
+      if (body.total_cost && !body.totalCost) body.totalCost = body.total_cost;
+      const purchase = await PurchaseService.updatePurchase(req.params.id, body);
       
       res.status(200).json({
         success: true,

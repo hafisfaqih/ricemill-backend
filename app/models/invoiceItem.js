@@ -64,13 +64,14 @@ const InvoiceItem = sequelize.define('InvoiceItem', {
   },
   total: {
     type: DataTypes.DECIMAL(15, 2),
-    allowNull: false,
+    allowNull: true, // calculated automatically before save
+    defaultValue: 0,
     validate: {
       isDecimal: {
         msg: 'Total must be a decimal number',
       },
       min: {
-        args: 0,
+        args: [0],
         msg: 'Total must be non-negative',
       },
     },
@@ -89,9 +90,22 @@ const InvoiceItem = sequelize.define('InvoiceItem', {
     },
   ],
   hooks: {
+    beforeValidate: (invoiceItem) => {
+      if (invoiceItem.quantity != null && invoiceItem.price != null) {
+        const q = parseFloat(invoiceItem.quantity);
+        const p = parseFloat(invoiceItem.price);
+        const t = q * p;
+        invoiceItem.total = (Number.isFinite(t) && t >= 0) ? t : 0;
+      }
+    },
     beforeSave: (invoiceItem) => {
-      // Calculate total: quantity * price
-      invoiceItem.total = parseFloat(invoiceItem.quantity) * parseFloat(invoiceItem.price);
+      // Ensure total is recalculated right before persistence with safety checks
+      if (invoiceItem.quantity != null && invoiceItem.price != null) {
+        const q = parseFloat(invoiceItem.quantity);
+        const p = parseFloat(invoiceItem.price);
+        const t = q * p;
+        invoiceItem.total = (Number.isFinite(t) && t >= 0) ? t : 0;
+      }
     },
   },
 });

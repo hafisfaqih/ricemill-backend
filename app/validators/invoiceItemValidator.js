@@ -2,12 +2,13 @@ const Joi = require('joi');
 
 // Validation schema for creating a new invoice item
 const validateInvoiceItemCreate = (data) => {
+  if (data && data.invoice_id && !data.invoiceId) data.invoiceId = data.invoice_id;
   const schema = Joi.object({
-    invoice_id: Joi.number().integer().positive().required().messages({
+    // When used with route /:id/items invoiceId may be omitted; required in bulk endpoint
+    invoiceId: Joi.number().integer().positive().optional().messages({
       'number.base': 'Invoice ID must be a number',
       'number.integer': 'Invoice ID must be an integer',
-      'number.positive': 'Invoice ID must be positive',
-      'any.required': 'Invoice ID is required'
+      'number.positive': 'Invoice ID must be positive'
     }),
     name: Joi.string().trim().max(255).required().messages({
       'string.base': 'Item name must be a string',
@@ -55,9 +56,9 @@ const validateInvoiceItemUpdate = (data) => {
 
 // Validation schema for invoice item search/filter parameters
 const validateInvoiceItemSearch = (data) => {
+  if (data && data.invoice_id && !data.invoiceId) data.invoiceId = data.invoice_id;
   const schema = Joi.object({
-    // Invoice ID filter
-    invoice_id: Joi.number().integer().positive().messages({
+    invoiceId: Joi.number().integer().positive().messages({
       'number.base': 'Invoice ID must be a number',
       'number.integer': 'Invoice ID must be an integer',
       'number.positive': 'Invoice ID must be positive'
@@ -127,8 +128,9 @@ const validateInvoiceItemSearch = (data) => {
 
 // Validation schema for bulk invoice items creation
 const validateBulkInvoiceItemCreate = (data) => {
+  if (data && data.invoice_id && !data.invoiceId) data.invoiceId = data.invoice_id;
   const schema = Joi.object({
-    invoice_id: Joi.number().integer().positive().required().messages({
+    invoiceId: Joi.number().integer().positive().required().messages({
       'number.base': 'Invoice ID must be a number',
       'number.integer': 'Invoice ID must be an integer',
       'number.positive': 'Invoice ID must be positive',

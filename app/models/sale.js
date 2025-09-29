@@ -86,7 +86,7 @@ const Sale = sequelize.define('Sale', {
         msg: 'Pellet cost must be a decimal number',
       },
       min: {
-        args: 0,
+        args: [0],
         msg: 'Pellet cost must be non-negative',
       },
     },
@@ -100,7 +100,7 @@ const Sale = sequelize.define('Sale', {
         msg: 'Fuel cost must be a decimal number',
       },
       min: {
-        args: 0,
+        args: [0],
         msg: 'Fuel cost must be non-negative',
       },
     },
@@ -114,7 +114,7 @@ const Sale = sequelize.define('Sale', {
         msg: 'Labor cost must be a decimal number',
       },
       min: {
-        args: 0,
+        args: [0],
         msg: 'Labor cost must be non-negative',
       },
     },
@@ -195,6 +195,16 @@ Sale.belongsTo(Purchase, {
   onDelete: 'SET NULL',
   onUpdate: 'CASCADE',
 });
+
+// Inverse association defined here to avoid circular require in purchase.js
+if (!Purchase.associations || !Purchase.associations.sales) {
+  Purchase.hasMany(Sale, {
+    foreignKey: 'purchaseId',
+    as: 'sales',
+    onDelete: 'SET NULL',
+    onUpdate: 'CASCADE',
+  });
+}
 
 // Instance methods
 Sale.prototype.toJSON = function () {
