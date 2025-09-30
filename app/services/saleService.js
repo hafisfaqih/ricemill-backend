@@ -11,11 +11,13 @@ const { sequelize } = require('../../config/db');
 class SaleService {
   // -------- Helper utilities --------
   static _computeRevenue(row) {
-    return parseFloat(row.quantity) * parseFloat(row.weight) * parseFloat(row.price);
+    const unitWeight = parseFloat(row.weight) + parseFloat(row.extraWeight || 0);
+    return parseFloat(row.quantity) * unitWeight * parseFloat(row.price);
   }
 
   static _computeTotalWeight(row) {
-    return parseFloat(row.quantity) * parseFloat(row.weight);
+    const unitWeight = parseFloat(row.weight) + parseFloat(row.extraWeight || 0);
+    return parseFloat(row.quantity) * unitWeight;
   }
 
   static async _getSoldWeightForPurchase(purchaseId, excludeSaleId = null) {
@@ -27,7 +29,14 @@ class SaleService {
     const result = await Sale.findAll({
       where,
       attributes: [
-        [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.literal('quantity * weight')), 0), 'soldWeight'],
+        [
+          sequelize.fn(
+            'COALESCE',
+            sequelize.fn('SUM', sequelize.literal('quantity * (weight + COALESCE(extra_weight, 0))')),
+            0
+          ),
+          'soldWeight'
+        ],
       ],
       raw: true,
     });
@@ -45,15 +54,17 @@ class SaleService {
   // -------- CRUD --------
   static async createSale(data) {
     try {
-      const { purchaseId, quantity, weight } = data;
+      const { purchaseId, quantity, weight, extraWeight = 0 } = data;
 
       if (purchaseId) {
         const purchase = await Purchase.findByPk(purchaseId, { include: [{ model: Supplier, as: 'supplierData' }] });
         if (!purchase) throw new Error('Purchase not found');
 
-        const purchaseTotalWeight = parseFloat(purchase.quantity) * parseFloat(purchase.weight);
+        const purchaseUnitWeight = parseFloat(purchase.weight) + parseFloat(purchase.extraWeight || 0);
+        const purchaseTotalWeight = parseFloat(purchase.quantity) * purchaseUnitWeight;
         const existingSoldWeight = await this._getSoldWeightForPurchase(purchaseId);
-        const newSoldWeight = parseFloat(quantity) * parseFloat(weight);
+        const unitWeight = parseFloat(weight) + parseFloat(extraWeight || 0);
+        const newSoldWeight = parseFloat(quantity) * unitWeight;
         const available = purchaseTotalWeight - existingSoldWeight;
         if (newSoldWeight > available) {
           throw new Error(`Insufficient inventory. Available: ${available.toFixed(2)}kg, Requested: ${newSoldWeight.toFixed(2)}kg`);
@@ -168,15 +179,18 @@ class SaleService {
 
       const effectivePurchaseId = updateData.purchaseId || sale.purchaseId;
       const newQuantity = updateData.quantity || sale.quantity;
-      const newWeightUnit = updateData.weight || sale.weight;
+      const newWeightUnit = updateData.weight !== undefined ? updateData.weight : sale.weight;
+      const newExtraWeight = updateData.extraWeight !== undefined ? updateData.extraWeight : (sale.extraWeight || 0);
 
       if (effectivePurchaseId) {
         const purchase = await Purchase.findByPk(effectivePurchaseId);
         if (!purchase) throw new Error('Purchase not found');
 
-        const purchaseTotalWeight = parseFloat(purchase.quantity) * parseFloat(purchase.weight);
+        const purchaseUnitWeight = parseFloat(purchase.weight) + parseFloat(purchase.extraWeight || 0);
+        const purchaseTotalWeight = parseFloat(purchase.quantity) * purchaseUnitWeight;
         const existingSoldWeight = await this._getSoldWeightForPurchase(effectivePurchaseId, id);
-        const newSoldWeight = parseFloat(newQuantity) * parseFloat(newWeightUnit);
+        const unitWeight = parseFloat(newWeightUnit) + parseFloat(newExtraWeight || 0);
+        const newSoldWeight = parseFloat(newQuantity) * unitWeight;
         const available = purchaseTotalWeight - existingSoldWeight;
         if (newSoldWeight > available) {
           throw new Error(`Insufficient inventory. Available: ${available.toFixed(2)}kg, Requested: ${newSoldWeight.toFixed(2)}kg`);
@@ -278,8 +292,8 @@ class SaleService {
         where,
         attributes: [
           [sequelize.fn('COUNT', sequelize.col('id')), 'totalSales'],
-          [sequelize.fn('SUM', sequelize.literal('quantity * weight')), 'totalWeight'],
-          [sequelize.fn('SUM', sequelize.literal('quantity * weight * price')), 'totalRevenue'],
+          [sequelize.fn('SUM', sequelize.literal('quantity * (weight + COALESCE(extra_weight, 0))')), 'totalWeight'],
+          [sequelize.fn('SUM', sequelize.literal('quantity * (weight + COALESCE(extra_weight, 0)) * price')), 'totalRevenue'],
           [sequelize.fn('SUM', sequelize.col('net_profit')), 'totalProfit'],
           [sequelize.fn('AVG', sequelize.col('price')), 'avgUnitPrice'],
         ],
@@ -343,8 +357,8 @@ class SaleService {
         attributes: [
           [dateExpr, 'period'],
           [sequelize.fn('COUNT', sequelize.col('id')), 'salesCount'],
-          [sequelize.fn('SUM', sequelize.literal('quantity * weight')), 'totalWeight'],
-          [sequelize.fn('SUM', sequelize.literal('quantity * weight * price')), 'totalRevenue'],
+          [sequelize.fn('SUM', sequelize.literal('quantity * (weight + COALESCE(extra_weight, 0))')), 'totalWeight'],
+          [sequelize.fn('SUM', sequelize.literal('quantity * (weight + COALESCE(extra_weight, 0)) * price')), 'totalRevenue'],
           [sequelize.fn('SUM', sequelize.col('net_profit')), 'totalProfit'],
         ],
         group: [dateExpr],
@@ -388,13 +402,21 @@ class SaleService {
     try {
       const rows = await Purchase.findAll({
         attributes: [
-          'id', 'date', 'quantity', 'weight',
+          'id', 'date', 'quantity', 'weight', 'extraWeight',
           // Disambiguate columns by qualifying with table alias to avoid Postgres 42702 (ambiguous column)
-          [sequelize.literal('"Purchase"."quantity" * "Purchase"."weight"'), 'totalWeight'],
+          [
+            sequelize.literal(
+              '"Purchase"."quantity" * ("Purchase"."weight" + COALESCE("Purchase"."extra_weight", 0))'
+            ),
+            'totalWeight'
+          ],
           [
             sequelize.fn(
               'COALESCE',
-              sequelize.fn('SUM', sequelize.literal('"sales"."quantity" * "sales"."weight"')),
+              sequelize.fn(
+                'SUM',
+                sequelize.literal('"sales"."quantity" * ("sales"."weight" + COALESCE("sales"."extra_weight", 0))')
+              ),
               0
             ),
             'soldWeight'

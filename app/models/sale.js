@@ -61,6 +61,21 @@ const Sale = sequelize.define('Sale', {
       },
     },
   },
+  extraWeight: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: false,
+    defaultValue: 0,
+    field: 'extra_weight',
+    validate: {
+      isDecimal: {
+        msg: 'Extra weight must be a decimal number',
+      },
+      min: {
+        args: [0],
+        msg: 'Extra weight must be non-negative',
+      },
+    },
+  },
   price: {
     type: DataTypes.DECIMAL(15, 2),
     allowNull: false,
@@ -153,7 +168,8 @@ const Sale = sequelize.define('Sale', {
   hooks: {
     beforeSave: async (sale) => {
       // Calculate revenue
-      const revenue = parseFloat(sale.quantity) * parseFloat(sale.weight) * parseFloat(sale.price);
+      const unitWeight = parseFloat(sale.weight) + parseFloat(sale.extraWeight || 0);
+      const revenue = parseFloat(sale.quantity) * unitWeight * parseFloat(sale.price);
       
       // Calculate operational costs
       const operationalCosts = parseFloat(sale.pellet || 0) + parseFloat(sale.fuel || 0) + parseFloat(sale.labor || 0);
@@ -164,8 +180,8 @@ const Sale = sequelize.define('Sale', {
         const purchase = await Purchase.findByPk(sale.purchaseId);
         if (purchase) {
           // Calculate proportional purchase cost based on weight sold vs total purchase weight
-          const totalPurchaseWeight = parseFloat(purchase.quantity) * parseFloat(purchase.weight);
-          const soldWeight = parseFloat(sale.quantity) * parseFloat(sale.weight);
+          const totalPurchaseWeight = parseFloat(purchase.quantity) * (parseFloat(purchase.weight) + parseFloat(purchase.extraWeight || 0));
+          const soldWeight = parseFloat(sale.quantity) * unitWeight;
           const proportion = soldWeight / totalPurchaseWeight;
           purchaseCost = parseFloat(purchase.totalCost) * proportion;
         }
@@ -176,10 +192,10 @@ const Sale = sequelize.define('Sale', {
       
       // Calculate rendement if purchase is linked
       if (sale.purchaseId && purchaseCost > 0) {
-        const soldWeight = parseFloat(sale.quantity) * parseFloat(sale.weight);
+        const soldWeight = parseFloat(sale.quantity) * unitWeight;
         const purchase = await Purchase.findByPk(sale.purchaseId);
         if (purchase) {
-          const purchaseWeight = parseFloat(purchase.quantity) * parseFloat(purchase.weight);
+          const purchaseWeight = parseFloat(purchase.quantity) * (parseFloat(purchase.weight) + parseFloat(purchase.extraWeight || 0));
           const rendementPercentage = (soldWeight / purchaseWeight) * 100;
           sale.rendement = `${rendementPercentage.toFixed(1)}%`;
         }
@@ -221,15 +237,20 @@ Sale.prototype.toJSON = function () {
       values[field] = parseFloat(values[field]);
     }
   });
+  if (values.extraWeight !== null && values.extraWeight !== undefined) {
+    values.extraWeight = parseFloat(values.extraWeight);
+  }
   return values;
 };
 
 Sale.prototype.calculateRevenue = function () {
-  return parseFloat(this.quantity) * parseFloat(this.weight) * parseFloat(this.price);
+  const unitWeight = parseFloat(this.weight) + parseFloat(this.extraWeight || 0);
+  return parseFloat(this.quantity) * unitWeight * parseFloat(this.price);
 };
 
 Sale.prototype.calculateTotalWeight = function () {
-  return parseFloat(this.quantity) * parseFloat(this.weight);
+  const unitWeight = parseFloat(this.weight) + parseFloat(this.extraWeight || 0);
+  return parseFloat(this.quantity) * unitWeight;
 };
 
 Sale.prototype.calculateOperationalCosts = function () {
@@ -278,8 +299,8 @@ Sale.getTotalsByMonth = async function (year, month) {
   return await this.findAll({
     attributes: [
       [sequelize.fn('SUM', sequelize.col('quantity')), 'totalQuantity'],
-      [sequelize.fn('SUM', sequelize.literal('quantity * weight')), 'totalWeight'],
-      [sequelize.fn('SUM', sequelize.literal('quantity * weight * price')), 'totalRevenue'],
+      [sequelize.fn('SUM', sequelize.literal('quantity * (weight + COALESCE(extra_weight, 0))')), 'totalWeight'],
+      [sequelize.fn('SUM', sequelize.literal('quantity * (weight + COALESCE(extra_weight, 0)) * price')), 'totalRevenue'],
       [sequelize.fn('SUM', sequelize.col('net_profit')), 'totalProfit'],
       [sequelize.fn('COUNT', sequelize.col('id')), 'totalTransactions'],
       [sequelize.fn('AVG', sequelize.col('price')), 'averagePrice'],
@@ -296,7 +317,7 @@ Sale.getProfitAnalysis = async function (startDate, endDate) {
   const { Op } = require('sequelize');
   return await this.findAll({
     attributes: [
-      [sequelize.fn('SUM', sequelize.literal('quantity * weight * price')), 'totalRevenue'],
+      [sequelize.fn('SUM', sequelize.literal('quantity * (weight + COALESCE(extra_weight, 0)) * price')), 'totalRevenue'],
       [sequelize.fn('SUM', sequelize.col('pellet')), 'totalPelletCost'],
       [sequelize.fn('SUM', sequelize.col('fuel')), 'totalFuelCost'],
       [sequelize.fn('SUM', sequelize.col('labor')), 'totalLaborCost'],

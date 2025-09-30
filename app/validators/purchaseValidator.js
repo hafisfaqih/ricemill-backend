@@ -59,6 +59,17 @@ const purchaseSchemas = {
         'number.max': 'Weight cannot exceed 1,000 kg',
         'any.required': 'Weight is required',
       }),
+
+    extraWeight: Joi.number()
+      .precision(2)
+      .min(0)
+      .max(1000)
+      .default(0)
+      .messages({
+        'number.base': 'Extra weight must be a number',
+        'number.min': 'Extra weight must be non-negative',
+        'number.max': 'Extra weight cannot exceed 1,000 kg',
+      }),
     
     price: Joi.number()
       .precision(2)
@@ -72,6 +83,17 @@ const purchaseSchemas = {
         'any.required': 'Price is required',
       }),
     
+    pelletCost: Joi.number()
+      .precision(2)
+      .min(0)
+      .max(1000000)
+      .default(0)
+      .messages({
+        'number.base': 'Pellet cost must be a number',
+        'number.min': 'Pellet cost must be non-negative',
+        'number.max': 'Pellet cost cannot exceed 1,000,000',
+      }),
+
     truckCost: Joi.number()
       .precision(2)
       .min(0)
@@ -155,6 +177,17 @@ const purchaseSchemas = {
         'number.min': 'Weight must be greater than 0',
         'number.max': 'Weight cannot exceed 1,000 kg',
       }),
+
+    extraWeight: Joi.number()
+      .precision(2)
+      .min(0)
+      .max(1000)
+      .optional()
+      .messages({
+        'number.base': 'Extra weight must be a number',
+        'number.min': 'Extra weight must be non-negative',
+        'number.max': 'Extra weight cannot exceed 1,000 kg',
+      }),
     
     price: Joi.number()
       .precision(2)
@@ -165,6 +198,17 @@ const purchaseSchemas = {
         'number.base': 'Price must be a number',
         'number.min': 'Price must be greater than 0',
         'number.max': 'Price cannot exceed 1,000,000',
+      }),
+
+    pelletCost: Joi.number()
+      .precision(2)
+      .min(0)
+      .max(1000000)
+      .optional()
+      .messages({
+        'number.base': 'Pellet cost must be a number',
+        'number.min': 'Pellet cost must be non-negative',
+        'number.max': 'Pellet cost cannot exceed 1,000,000',
       }),
     
     truckCost: Joi.number()
@@ -314,6 +358,12 @@ const validatePurchase = (schema) => {
       }
       if (dataToValidate && dataToValidate.labor_cost && !dataToValidate.laborCost) {
         dataToValidate.laborCost = dataToValidate.labor_cost;
+      }
+      if (dataToValidate && dataToValidate.extra_weight && !dataToValidate.extraWeight) {
+        dataToValidate.extraWeight = dataToValidate.extra_weight;
+      }
+      if (dataToValidate && dataToValidate.pellet_cost && !dataToValidate.pelletCost) {
+        dataToValidate.pelletCost = dataToValidate.pellet_cost;
       }
     } else if (schema === 'query') {
       if (dataToValidate.supplier_id && !dataToValidate.supplierId) dataToValidate.supplierId = dataToValidate.supplier_id;

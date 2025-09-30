@@ -314,11 +314,17 @@ class PurchaseService {
 
         const quantity = Number(purchase.quantity) || 0;
         const weight = Number(purchase.weight) || 0;
+        const extraWeight = Number(purchase.extraWeight) || 0;
         const price = Number(purchase.price) || 0;
-        const cost = Number(purchase.totalCost) || quantity * weight * price;
+        const truckCost = Number(purchase.truckCost) || 0;
+        const laborCost = Number(purchase.laborCost) || 0;
+        const pelletCost = Number(purchase.pelletCost) || 0;
+        const unitWeight = weight + extraWeight;
+        const computedCost = quantity * unitWeight * price + truckCost + laborCost + pelletCost;
+        const cost = Number(purchase.totalCost) || computedCost;
 
         totalQuantity += quantity;
-        totalWeight += quantity * weight;
+        totalWeight += quantity * unitWeight;
         totalCost += cost;
         totalPrice += price;
 
@@ -384,9 +390,13 @@ class PurchaseService {
           'id',
           'quantity',
           'weight',
+          'extraWeight',
           'price',
           'date',
           'totalCost',
+          'pelletCost',
+          'truckCost',
+          'laborCost',
         ],
         include: [
           {
@@ -397,7 +407,7 @@ class PurchaseService {
           {
             model: require('../models/sale'),
             as: 'sales',
-            attributes: ['id', 'quantity', 'weight'],
+            attributes: ['id', 'quantity', 'weight', 'extraWeight'],
           },
         ],
         order: [['date', 'ASC']], // FIFO
@@ -405,8 +415,12 @@ class PurchaseService {
 
       // Augment with remaining weight (totalWeight - soldWeight)
       return inventory.map(p => {
-        const totalWeight = parseFloat(p.quantity) * parseFloat(p.weight);
-        const soldWeight = (p.sales || []).reduce((acc, s) => acc + (parseFloat(s.quantity) * parseFloat(s.weight)), 0);
+        const unitWeight = parseFloat(p.weight) + parseFloat(p.extraWeight || 0);
+        const totalWeight = parseFloat(p.quantity) * unitWeight;
+        const soldWeight = (p.sales || []).reduce((acc, s) => {
+          const saleUnitWeight = parseFloat(s.weight) + parseFloat(s.extraWeight || 0);
+          return acc + (parseFloat(s.quantity) * saleUnitWeight);
+        }, 0);
         const remainingWeight = totalWeight - soldWeight;
         return {
           ...p.toJSON(),
@@ -434,7 +448,7 @@ class PurchaseService {
             [Op.between]: [new Date(`${year}-01-01`), new Date(`${year}-12-31`)],
           },
         },
-        attributes: ['id', 'date', 'quantity', 'weight', 'totalCost'],
+        attributes: ['id', 'date', 'quantity', 'weight', 'extraWeight', 'totalCost'],
       });
 
       const monthlyTotals = Array.from({ length: 12 }, (_, index) => ({
@@ -450,13 +464,14 @@ class PurchaseService {
         if (!purchaseDate || Number.isNaN(purchaseDate.getMonth())) return;
 
         const monthIndex = purchaseDate.getMonth();
-        const quantity = Number(purchase.quantity) || 0;
-        const weight = Number(purchase.weight) || 0;
+    const quantity = Number(purchase.quantity) || 0;
+    const weight = Number(purchase.weight) || 0;
+    const extraWeight = Number(purchase.extraWeight) || 0;
         const totalCost = Number(purchase.totalCost) || 0;
 
         const monthBucket = monthlyTotals[monthIndex];
         monthBucket.purchaseCount += 1;
-        monthBucket.totalWeight += quantity * weight;
+    monthBucket.totalWeight += quantity * (weight + extraWeight);
         monthBucket.totalCost += totalCost;
       });
 

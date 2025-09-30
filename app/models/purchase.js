@@ -71,6 +71,21 @@ const Purchase = sequelize.define('Purchase', {
       },
     },
   },
+  extraWeight: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: false,
+    defaultValue: 0,
+    field: 'extra_weight',
+    validate: {
+      isDecimal: {
+        msg: 'Extra weight must be a decimal number',
+      },
+      min: {
+        args: [0],
+        msg: 'Extra weight must be non-negative',
+      },
+    },
+  },
   price: {
     type: DataTypes.DECIMAL(15, 2),
     allowNull: false,
@@ -84,6 +99,21 @@ const Purchase = sequelize.define('Purchase', {
       min: {
         args: 0.01,
         msg: 'Price must be greater than 0',
+      },
+    },
+  },
+  pelletCost: {
+    type: DataTypes.DECIMAL(15, 2),
+    allowNull: false,
+    defaultValue: 0,
+    field: 'pellet_cost',
+    validate: {
+      isDecimal: {
+        msg: 'Pellet cost must be a decimal number',
+      },
+      min: {
+        args: [0],
+        msg: 'Pellet cost must be non-negative',
       },
     },
   },
@@ -150,17 +180,21 @@ const Purchase = sequelize.define('Purchase', {
   hooks: {
     beforeCreate: (purchase) => {
       // Calculate total cost: (quantity * weight * price) + truckCost + laborCost
-      const productCost = parseFloat(purchase.quantity) * parseFloat(purchase.weight) * parseFloat(purchase.price);
+      const unitWeight = parseFloat(purchase.weight) + parseFloat(purchase.extraWeight || 0);
+      const productCost = parseFloat(purchase.quantity) * unitWeight * parseFloat(purchase.price);
       const truckCost = parseFloat(purchase.truckCost) || 0;
       const laborCost = parseFloat(purchase.laborCost) || 0;
-      purchase.totalCost = productCost + truckCost + laborCost;
+      const pelletCost = parseFloat(purchase.pelletCost) || 0;
+      purchase.totalCost = productCost + truckCost + laborCost + pelletCost;
     },
     beforeUpdate: (purchase) => {
       // Calculate total cost: (quantity * weight * price) + truckCost + laborCost
-      const productCost = parseFloat(purchase.quantity) * parseFloat(purchase.weight) * parseFloat(purchase.price);
+      const unitWeight = parseFloat(purchase.weight) + parseFloat(purchase.extraWeight || 0);
+      const productCost = parseFloat(purchase.quantity) * unitWeight * parseFloat(purchase.price);
       const truckCost = parseFloat(purchase.truckCost) || 0;
       const laborCost = parseFloat(purchase.laborCost) || 0;
-      purchase.totalCost = productCost + truckCost + laborCost;
+      const pelletCost = parseFloat(purchase.pelletCost) || 0;
+      purchase.totalCost = productCost + truckCost + laborCost + pelletCost;
     },
   },
 });
@@ -200,15 +234,22 @@ Purchase.prototype.toJSON = function () {
       values[field] = parseFloat(values[field]);
     }
   });
+  ['extraWeight', 'pelletCost'].forEach(field => {
+    if (values[field] !== null && values[field] !== undefined) {
+      values[field] = parseFloat(values[field]);
+    }
+  });
   return values;
 };
 
 Purchase.prototype.calculateTotalWeight = function () {
-  return parseFloat(this.quantity) * parseFloat(this.weight);
+  const unitWeight = parseFloat(this.weight) + parseFloat(this.extraWeight || 0);
+  return parseFloat(this.quantity) * unitWeight;
 };
 
 Purchase.prototype.calculateProductCost = function () {
-  return parseFloat(this.quantity) * parseFloat(this.weight) * parseFloat(this.price);
+  const unitWeight = parseFloat(this.weight) + parseFloat(this.extraWeight || 0);
+  return parseFloat(this.quantity) * unitWeight * parseFloat(this.price);
 };
 
 // Class methods
@@ -253,7 +294,7 @@ Purchase.getTotalsByMonth = async function (year, month) {
   return await this.findAll({
     attributes: [
       [sequelize.fn('SUM', sequelize.col('quantity')), 'totalQuantity'],
-      [sequelize.fn('SUM', sequelize.literal('quantity * weight')), 'totalWeight'],
+      [sequelize.fn('SUM', sequelize.literal('quantity * (weight + COALESCE(extra_weight, 0))')), 'totalWeight'],
       [sequelize.fn('SUM', sequelize.col('total_cost')), 'totalCost'],
       [sequelize.fn('COUNT', sequelize.col('id')), 'totalTransactions'],
     ],

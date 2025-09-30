@@ -11,6 +11,7 @@ class SaleController {
       // Backward compatibility normalization
       const body = { ...req.body };
       if (body.purchase_id && !body.purchaseId) body.purchaseId = body.purchase_id;
+  if (body.extra_weight && !body.extraWeight) body.extraWeight = body.extra_weight;
       // cost related legacy snake_case (if any)
       if (body.net_profit && !body.netProfit) body.netProfit = body.net_profit; // Normally computed by hook
       const sale = await SaleService.createSale(body);
@@ -130,6 +131,7 @@ class SaleController {
     try {
       const body = { ...req.body };
       if (body.purchase_id && !body.purchaseId) body.purchaseId = body.purchase_id;
+  if (body.extra_weight && !body.extraWeight) body.extraWeight = body.extra_weight;
       if (body.net_profit && !body.netProfit) body.netProfit = body.net_profit;
       const sale = await SaleService.updateSale(req.params.id, body);
       

@@ -13,6 +13,8 @@ class PurchaseController {
       if (body.supplier_id && !body.supplierId) body.supplierId = body.supplier_id;
       if (body.truck_cost && !body.truckCost) body.truckCost = body.truck_cost;
       if (body.labor_cost && !body.laborCost) body.laborCost = body.labor_cost;
+  if (body.extra_weight && !body.extraWeight) body.extraWeight = body.extra_weight;
+  if (body.pellet_cost && !body.pelletCost) body.pelletCost = body.pellet_cost;
       if (body.total_cost && !body.totalCost) body.totalCost = body.total_cost; // usually recalculated by hooks
       const purchase = await PurchaseService.createPurchase(body);
       
@@ -132,6 +134,8 @@ class PurchaseController {
       if (body.supplier_id && !body.supplierId) body.supplierId = body.supplier_id;
       if (body.truck_cost && !body.truckCost) body.truckCost = body.truck_cost;
       if (body.labor_cost && !body.laborCost) body.laborCost = body.labor_cost;
+  if (body.extra_weight && !body.extraWeight) body.extraWeight = body.extra_weight;
+  if (body.pellet_cost && !body.pelletCost) body.pelletCost = body.pellet_cost;
       if (body.total_cost && !body.totalCost) body.totalCost = body.total_cost;
       const purchase = await PurchaseService.updatePurchase(req.params.id, body);
       

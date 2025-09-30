@@ -4,6 +4,7 @@ const Joi = require('joi');
 const validateSaleCreate = (data) => {
   // Backward compatibility mapping
   if (data && data.purchase_id && !data.purchaseId) data.purchaseId = data.purchase_id;
+  if (data && data.extra_weight && !data.extraWeight) data.extraWeight = data.extra_weight;
   const schema = Joi.object({
     date: Joi.date().iso().required().messages({
       'date.base': 'Date must be a valid date',
@@ -26,6 +27,10 @@ const validateSaleCreate = (data) => {
       'number.positive': 'Weight must be positive',
       'any.required': 'Weight is required'
     }),
+      extraWeight: Joi.number().min(0).precision(2).default(0).messages({
+        'number.base': 'Extra weight must be a number',
+        'number.min': 'Extra weight cannot be negative'
+      }),
     price: Joi.number().positive().precision(2).required().messages({
       'number.base': 'Price must be a number',
       'number.positive': 'Price must be positive',
@@ -51,6 +56,7 @@ const validateSaleCreate = (data) => {
 // Validation schema for updating a sale
 const validateSaleUpdate = (data) => {
   if (data && data.purchase_id && !data.purchaseId) data.purchaseId = data.purchase_id;
+  if (data && data.extra_weight && !data.extraWeight) data.extraWeight = data.extra_weight;
   const schema = Joi.object({
     date: Joi.date().iso().messages({
       'date.base': 'Date must be a valid date',
@@ -70,6 +76,10 @@ const validateSaleUpdate = (data) => {
       'number.base': 'Weight must be a number',
       'number.positive': 'Weight must be positive'
     }),
+      extraWeight: Joi.number().min(0).precision(2).messages({
+        'number.base': 'Extra weight must be a number',
+        'number.min': 'Extra weight cannot be negative'
+      }),
     price: Joi.number().positive().precision(2).messages({
       'number.base': 'Price must be a number',
       'number.positive': 'Price must be positive'
