@@ -8,6 +8,8 @@
     "build": "echo 'No build needed for Express.js'",
     "test": "NODE_ENV=test jest --runInBand",
     "deploy": "./deploy.sh",
+  "db:fresh": "node scripts/dbFresh.js",
+  "db:fresh:force": "node scripts/dbFresh.js --force",
     "update": "git pull origin main && npm ci --omit=dev && pm2 restart ricemill-api",
     "pm2:start": "pm2 start ecosystem.config.js --env production",
     "pm2:restart": "pm2 restart ricemill-api",

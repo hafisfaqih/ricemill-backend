@@ -187,3 +187,50 @@ Untuk production, pertimbangkan:
    - Connection pooling
    - Database indexing
    - Query optimization
+
+## 📦 Migrasi Skema (Production)
+
+Beberapa fitur analitik terbaru membutuhkan kolom tambahan pada tabel `purchases` dan `sales`. Di lingkungan development kolom ini dibuat otomatis karena `sequelize.sync({ alter: true })`, namun di production sinkronisasi otomatis dimatikan untuk alasan keamanan. Akibatnya, Anda **harus menjalankan migrasi manual** sebelum melakukan deploy kode terbaru.
+
+1. Jalankan perintah berikut dari root project backend untuk membuat koneksi ke database production Anda:
+   ```bash
+   psql "postgres://<user>:<password>@<host>:<port>/<database>"
+   ```
+   > Sesuaikan credential sesuai environment production.
+
+2. Eksekusi script migrasi yang disediakan:
+   ```sql
+   \i sql/migrations/2025-10-03-add-purchase-sales-columns.sql
+   ```
+
+3. Verifikasi struktur tabel (opsional):
+   ```sql
+   \d+ purchases
+   \d+ sales
+   ```
+
+Catatan:
+- Script menggunakan `ADD COLUMN IF NOT EXISTS` sehingga aman dijalankan berulang kali.
+- Setelah migrasi sukses, endpoint `/api/purchases`, `/api/sales`, dan statistik terkait akan bekerja kembali di production.
+
+## 🔁 Reset Database dari Nol (Staging/Test)
+
+Jika Anda ingin memulai ulang database (mirip `php artisan migrate:fresh` di Laravel) dan **tidak keberatan kehilangan seluruh data**, gunakan script berikut:
+
+```bash
+# Pastikan sudah berada di folder backend
+cd ricemill-backend
+
+# Jalankan dengan konfirmasi interaktif
+npm run db:fresh
+
+# Atau skip konfirmasi dengan opsi --force (gunakan hanya di CI/staging)
+npm run db:fresh:force
+```
+
+Script `scripts/dbFresh.js` akan:
+- Menghubungkan ke database sesuai konfigurasi `.env`
+- Menghapus semua tabel dan tipe ENUM terkait
+- Menjalankan ulang `sequelize.sync({ force: true })` untuk membuat skema baru
+
+> ⚠️ **Peringatan:** Semua data akan hilang permanen. Gunakan hanya di lingkungan staging/testing atau sebelum database berisi data penting.
