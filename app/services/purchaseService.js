@@ -312,19 +312,19 @@ class PurchaseService {
       purchases.forEach(purchase => {
         totalPurchases += 1;
 
-        const quantity = Number(purchase.quantity) || 0;
-        const weight = Number(purchase.weight) || 0;
-        const extraWeight = Number(purchase.extraWeight) || 0;
-        const price = Number(purchase.price) || 0;
-        const truckCost = Number(purchase.truckCost) || 0;
-        const laborCost = Number(purchase.laborCost) || 0;
-        const pelletCost = Number(purchase.pelletCost) || 0;
-        const unitWeight = weight + extraWeight;
-        const computedCost = quantity * unitWeight * price + truckCost + laborCost + pelletCost;
+  const quantity = Number(purchase.quantity) || 0;
+  const weight = Number(purchase.weight) || 0;
+  const extraWeight = Number(purchase.extraWeight) || 0;
+  const price = Number(purchase.price) || 0;
+  const truckCost = Number(purchase.truckCost) || 0;
+  const laborCost = Number(purchase.laborCost) || 0;
+  const pelletCost = Number(purchase.pelletCost) || 0;
+  const computedWeight = quantity * weight + extraWeight;
+  const computedCost = computedWeight * price + truckCost + laborCost + pelletCost;
         const cost = Number(purchase.totalCost) || computedCost;
 
         totalQuantity += quantity;
-        totalWeight += quantity * unitWeight;
+  totalWeight += computedWeight;
         totalCost += cost;
         totalPrice += price;
 

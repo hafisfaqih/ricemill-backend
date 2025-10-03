@@ -179,21 +179,29 @@ const Purchase = sequelize.define('Purchase', {
   ],
   hooks: {
     beforeCreate: (purchase) => {
-      // Calculate total cost: (quantity * weight * price) + truckCost + laborCost
-      const unitWeight = parseFloat(purchase.weight) + parseFloat(purchase.extraWeight || 0);
-      const productCost = parseFloat(purchase.quantity) * unitWeight * parseFloat(purchase.price);
+      const quantity = parseFloat(purchase.quantity) || 0;
+      const weightPerSack = parseFloat(purchase.weight) || 0;
+      const extraWeight = parseFloat(purchase.extraWeight || 0);
+      const pricePerKg = parseFloat(purchase.price) || 0;
       const truckCost = parseFloat(purchase.truckCost) || 0;
       const laborCost = parseFloat(purchase.laborCost) || 0;
       const pelletCost = parseFloat(purchase.pelletCost) || 0;
+
+      const totalWeight = quantity * weightPerSack + extraWeight;
+      const productCost = totalWeight * pricePerKg;
       purchase.totalCost = productCost + truckCost + laborCost + pelletCost;
     },
     beforeUpdate: (purchase) => {
-      // Calculate total cost: (quantity * weight * price) + truckCost + laborCost
-      const unitWeight = parseFloat(purchase.weight) + parseFloat(purchase.extraWeight || 0);
-      const productCost = parseFloat(purchase.quantity) * unitWeight * parseFloat(purchase.price);
+      const quantity = parseFloat(purchase.quantity) || 0;
+      const weightPerSack = parseFloat(purchase.weight) || 0;
+      const extraWeight = parseFloat(purchase.extraWeight || 0);
+      const pricePerKg = parseFloat(purchase.price) || 0;
       const truckCost = parseFloat(purchase.truckCost) || 0;
       const laborCost = parseFloat(purchase.laborCost) || 0;
       const pelletCost = parseFloat(purchase.pelletCost) || 0;
+
+      const totalWeight = quantity * weightPerSack + extraWeight;
+      const productCost = totalWeight * pricePerKg;
       purchase.totalCost = productCost + truckCost + laborCost + pelletCost;
     },
   },
@@ -243,13 +251,15 @@ Purchase.prototype.toJSON = function () {
 };
 
 Purchase.prototype.calculateTotalWeight = function () {
-  const unitWeight = parseFloat(this.weight) + parseFloat(this.extraWeight || 0);
-  return parseFloat(this.quantity) * unitWeight;
+  const quantity = parseFloat(this.quantity) || 0;
+  const weightPerSack = parseFloat(this.weight) || 0;
+  const extraWeight = parseFloat(this.extraWeight || 0);
+  return quantity * weightPerSack + extraWeight;
 };
 
 Purchase.prototype.calculateProductCost = function () {
-  const unitWeight = parseFloat(this.weight) + parseFloat(this.extraWeight || 0);
-  return parseFloat(this.quantity) * unitWeight * parseFloat(this.price);
+  const totalWeight = this.calculateTotalWeight();
+  return totalWeight * (parseFloat(this.price) || 0);
 };
 
 // Class methods
