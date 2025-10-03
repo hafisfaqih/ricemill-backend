@@ -31,6 +31,26 @@ const confirmReset = () => {
   });
 };
 
+const dropTables = async () => {
+  const tables = await sequelize.query(
+    `SELECT tablename
+     FROM pg_tables
+     WHERE schemaname = 'public';`,
+    { type: QueryTypes.SELECT }
+  );
+
+  if (!tables.length) {
+    console.log('ℹ️  No tables detected in public schema. Skipping table drop.');
+    return;
+  }
+
+  for (const { tablename } of tables) {
+    await sequelize.query(`DROP TABLE IF EXISTS "${tablename}" CASCADE;`);
+  }
+
+  console.log(`🗑️  Dropped ${tables.length} table(s).`);
+};
+
 const dropEnumTypes = async () => {
   const enumRows = await sequelize.query(
     `SELECT DISTINCT t.typname AS enum_name
@@ -41,13 +61,16 @@ const dropEnumTypes = async () => {
     { type: QueryTypes.SELECT }
   );
 
+  if (!enumRows.length) {
+    console.log('ℹ️  No enum types detected.');
+    return;
+  }
+
   for (const { enum_name: enumName } of enumRows) {
     await sequelize.query(`DROP TYPE IF EXISTS "${enumName}" CASCADE;`);
   }
 
-  if (enumRows.length > 0) {
-    console.log(`🧹 Dropped ${enumRows.length} enum type(s).`);
-  }
+  console.log(`🧹 Dropped ${enumRows.length} enum type(s).`);
 };
 
 (async () => {
@@ -62,11 +85,11 @@ const dropEnumTypes = async () => {
     await sequelize.authenticate();
     console.log('✅ Connection established.');
 
-    console.log('🧨 Dropping all tables...');
-    await sequelize.drop();
-    console.log('🗑️  All tables dropped.');
+  console.log('🧨 Dropping all tables...');
+  await dropTables();
 
-    await dropEnumTypes();
+  console.log('🧼 Cleaning up enum types...');
+  await dropEnumTypes();
 
     console.log('🏗️  Recreating schema...');
     await sequelize.sync({ force: true });
