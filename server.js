@@ -74,13 +74,21 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs, {
   customSiteTitle: 'Rice Mill Management API Documentation'
 }));
 
-// API routes
-app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/suppliers', supplierRoutes);
-app.use('/api/purchases', purchaseRoutes);
-app.use('/api/sales', saleRoutes);
-app.use('/api/invoices', invoiceRoutes);
+// API routes (support both /api/* and non-prefixed paths to accommodate proxy rewrites)
+const routeMappings = [
+  { path: '/auth', router: authRoutes },
+  { path: '/users', router: userRoutes },
+  { path: '/suppliers', router: supplierRoutes },
+  { path: '/purchases', router: purchaseRoutes },
+  { path: '/sales', router: saleRoutes },
+  { path: '/invoices', router: invoiceRoutes },
+];
+
+['/api', ''].forEach(prefix => {
+  routeMappings.forEach(({ path, router }) => {
+    app.use(`${prefix}${path}`, router);
+  });
+});
 
 // Root endpoint
 /**
